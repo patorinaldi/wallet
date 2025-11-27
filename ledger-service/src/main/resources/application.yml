@@ -4,8 +4,8 @@ spring:
 
   datasource:
     url: jdbc:postgresql://localhost:5432/wallet_db
-    username: wallet
-    password: wallet123
+    username: ${DB_USERNAME:wallet}
+    password: ${DB_PASSWORD:wallet123}
     driver-class-name: org.postgresql.Driver
 
   docker:

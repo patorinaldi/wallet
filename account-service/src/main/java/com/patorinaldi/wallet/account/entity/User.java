@@ -24,15 +24,12 @@ public class User {
     private UUID id;
 
     @Column(name = "full_name", nullable = false)
-    private String fullname;
-
-    @Column(nullable = false, unique = true)
-    private String address;
+    private String fullName;
 
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(name = "phone_number, nullable = false")
+    @Column(name = "phone_number", nullable = false)
     private String phoneNumber;
 
     @Column(nullable = false)
