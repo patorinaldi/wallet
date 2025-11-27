@@ -8,7 +8,6 @@ import com.patorinaldi.wallet.common.event.UserRegisteredEvent;
 import com.patorinaldi.wallet.account.dto.UserResponse;
 import com.patorinaldi.wallet.account.dto.CreateUserRequest;
 import lombok.RequiredArgsConstructor;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.context.ApplicationEventPublisher;
