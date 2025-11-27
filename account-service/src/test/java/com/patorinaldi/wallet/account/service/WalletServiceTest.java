@@ -13,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.kafka.core.KafkaTemplate;
 
 import java.time.Instant;
@@ -41,7 +42,7 @@ public class WalletServiceTest {
     private WalletMapper walletMapper;
 
     @Mock
-    private KafkaTemplate<String, Object> kafkaTemplate;
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private WalletService walletService;
@@ -89,7 +90,7 @@ public class WalletServiceTest {
         verify(userRepository).findById(userId);
         verify(walletRepository).existsByUserIdAndCurrency(userId, "USD");
         verify(walletRepository).save(any(Wallet.class));
-        verify(kafkaTemplate).send(eq("wallet-created"), anyString(), any(WalletCreatedEvent.class));
+        verify(eventPublisher).publishEvent(any(WalletCreatedEvent.class));
         verify(walletMapper).toResponse(wallet);
     }
 
@@ -136,7 +137,7 @@ public class WalletServiceTest {
         verify(userRepository).findById(userId);
         verify(walletRepository).existsByUserIdAndCurrency(userId, "EUR");
         verify(walletRepository).save(any(Wallet.class));
-        verify(kafkaTemplate).send(eq("wallet-created"), anyString(), any(WalletCreatedEvent.class));
+        verify(eventPublisher).publishEvent(any(WalletCreatedEvent.class));
         verify(walletMapper).toResponse(wallet);
     }
 
@@ -157,7 +158,7 @@ public class WalletServiceTest {
         assertEquals("User doesn't exists", exception.getMessage());
         verify(userRepository).findById(userId);
         verify(walletRepository, never()).save(any());
-        verify(kafkaTemplate, never()).send(anyString(), anyString(), any());
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test
@@ -185,7 +186,7 @@ public class WalletServiceTest {
         verify(userRepository).findById(userId);
         verify(walletRepository).existsByUserIdAndCurrency(userId, "USD");
         verify(walletRepository, never()).save(any());
-        verify(kafkaTemplate, never()).send(anyString(), anyString(), any());
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test

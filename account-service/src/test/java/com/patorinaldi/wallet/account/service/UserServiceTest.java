@@ -13,6 +13,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -20,7 +21,9 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 
@@ -30,7 +33,7 @@ public class UserServiceTest {
     @Mock
     private UserRepository userRepository;
     @Mock
-    private KafkaTemplate<String, Object> kafkaTemplate;
+    private ApplicationEventPublisher eventPublisher;
     @Mock
     private UserMapper userMapper;
     @InjectMocks
@@ -61,7 +64,7 @@ public class UserServiceTest {
         assertEquals(expectedResponse, actualResponse);
         verify(userRepository).existsByEmail(request.email());
         verify(userRepository).saveAndFlush(any(User.class));
-        verify(kafkaTemplate).send(eq("user-registered"), anyString(), any(UserRegisteredEvent.class));
+        verify(eventPublisher).publishEvent(any(UserRegisteredEvent.class));
         verify(userMapper).toResponse(any(User.class));
     }
 

@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.List;
 import java.util.UUID;
@@ -23,7 +24,7 @@ public class WalletService {
     private final WalletRepository walletRepository;
     private final UserRepository userRepository;
     private final WalletMapper walletMapper;
-    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public WalletResponse createWallet(CreateWalletRequest request) {
@@ -50,8 +51,7 @@ public class WalletService {
                 wallet.getCurrency(),
                 wallet.getCreatedAt()
         );
-        kafkaTemplate.send("wallet-created", wallet.getId().toString(), event);
-
+        eventPublisher.publishEvent(event); 
 
         return walletMapper.toResponse(wallet);
     }

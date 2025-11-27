@@ -11,7 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import org.springframework.context.ApplicationEventPublisher;
 import java.util.UUID;
 
 
@@ -20,7 +20,7 @@ import java.util.UUID;
 public class UserService {
 
     private final UserRepository userRepository;
-    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final ApplicationEventPublisher eventPublisher;
     private final UserMapper userMapper;
 
     @Transactional
@@ -44,7 +44,7 @@ public class UserService {
                 user.getEmail(),
                 user.getFullName(),
                 user.getCreatedAt());
-        kafkaTemplate.send("user-registered", user.getId().toString(), event);
+        eventPublisher.publishEvent(event);
 
         return userMapper.toResponse(user);
     }
