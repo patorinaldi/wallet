@@ -50,7 +50,7 @@ public class UserServiceTest {
         UserResponse expectedResponse = new UserResponse(user.getId(), "John Doe", "john.doe@example.com", "1234567890", user.getCreatedAt(), true);
 
         when(userRepository.existsByEmail(anyString())).thenReturn(false);
-        when(userRepository.save(any(User.class))).thenReturn(user);
+        when(userRepository.saveAndFlush(any(User.class))).thenReturn(user);
         when(userMapper.toResponse(any(User.class))).thenReturn(expectedResponse);
 
         // When
@@ -60,7 +60,7 @@ public class UserServiceTest {
         assertNotNull(actualResponse);
         assertEquals(expectedResponse, actualResponse);
         verify(userRepository).existsByEmail(request.email());
-        verify(userRepository).save(any(User.class));
+        verify(userRepository).saveAndFlush(any(User.class));
         verify(kafkaTemplate).send(eq("user-registered"), anyString(), any(UserRegisteredEvent.class));
         verify(userMapper).toResponse(any(User.class));
     }

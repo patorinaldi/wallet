@@ -36,7 +36,7 @@ public class UserService {
                 .fullName(createUserRequest.fullName())
                 .phoneNumber(createUserRequest.phoneNumber())
                 .build();
-        user = userRepository.save(user);
+        user = userRepository.saveAndFlush(user);
 
         UserRegisteredEvent event = new UserRegisteredEvent(
                 UUID.randomUUID(),

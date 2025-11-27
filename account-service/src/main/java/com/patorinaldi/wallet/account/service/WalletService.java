@@ -84,6 +84,10 @@ public class WalletService {
         Wallet wallet = walletRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Id not found"));
 
+        if (!wallet.isActive()) {
+            throw new IllegalStateException("Wallet is already deactivated");
+        }
+
         wallet.setActive(false);
         Wallet deactivatedWallet = walletRepository.save(wallet);
         return walletMapper.toResponse(deactivatedWallet);

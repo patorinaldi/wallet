@@ -450,4 +450,38 @@ public class WalletServiceTest {
         verify(walletRepository, never()).save(any());
         verifyNoInteractions(walletMapper);
     }
+
+    @Test
+    void deactivateWallet_shouldThrowException_whenWalletIsAlreadyDeactivated() {
+        // Given
+        UUID walletId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+
+        User user = User.builder()
+                .id(userId)
+                .email("user@example.com")
+                .fullName("Test User")
+                .build();
+
+        Wallet inactiveWallet = Wallet.builder()
+                .id(walletId)
+                .user(user)
+                .currency("USD")
+                .active(false)
+                .createdAt(Instant.now())
+                .build();
+
+        when(walletRepository.findById(walletId)).thenReturn(Optional.of(inactiveWallet));
+
+        // When & Then
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> walletService.deactivateWallet(walletId)
+        );
+
+        assertEquals("Wallet is already deactivated", exception.getMessage());
+        verify(walletRepository).findById(walletId);
+        verify(walletRepository, never()).save(any());
+        verifyNoInteractions(walletMapper);
+    }
 }
