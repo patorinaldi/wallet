@@ -7,11 +7,12 @@ import com.patorinaldi.wallet.account.entity.Wallet;
 import com.patorinaldi.wallet.account.mapper.WalletMapper;
 import com.patorinaldi.wallet.account.repository.UserRepository;
 import com.patorinaldi.wallet.account.repository.WalletRepository;
+import com.patorinaldi.wallet.common.event.WalletCreatedEvent;
 import lombok.RequiredArgsConstructor;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -22,22 +23,37 @@ public class WalletService {
     private final WalletRepository walletRepository;
     private final UserRepository userRepository;
     private final WalletMapper walletMapper;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
 
     @Transactional
     public WalletResponse createWallet(CreateWalletRequest request) {
         User user = userRepository.findById(request.userId())
                 .orElseThrow(() -> new IllegalArgumentException("User doesn't exists"));
 
-        Wallet wallet = Wallet.builder()
-                .user(user)
-                .currency(request.currency() != null ? request.currency() : "USD")
-                .build();
+        String currency = request.currency() != null ? request.currency() : "USD";
 
-        if (walletRepository.existsByUserIdAndCurrency(wallet.getUser().getId(), wallet.getCurrency())) {
-            throw new IllegalStateException("User already have an " + request.currency() + " wallet");
+        if (walletRepository.existsByUserIdAndCurrency(request.userId(), currency)) {
+            throw new IllegalStateException("User already have an " + currency + " wallet");
         }
 
-        return walletMapper.toResponse(walletRepository.save(wallet));
+        Wallet wallet = Wallet.builder()
+                .user(user)
+                .currency(currency)
+                .build();
+
+        wallet = walletRepository.save(wallet);
+
+        WalletCreatedEvent event = new WalletCreatedEvent(
+                UUID.randomUUID(),
+                wallet.getId(),
+                wallet.getUser().getId(),
+                wallet.getCurrency(),
+                wallet.getCreatedAt()
+        );
+        kafkaTemplate.send("wallet-created", wallet.getId().toString(), event);
+
+
+        return walletMapper.toResponse(wallet);
     }
 
     @Transactional(readOnly = true)
@@ -67,10 +83,9 @@ public class WalletService {
     public WalletResponse deactivateWallet(UUID id) {
         Wallet wallet = walletRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Id not found"));
-        if (wallet.getBalance().compareTo(BigDecimal.ZERO) > 0) {
-            throw new IllegalStateException("Balance must be 0");
-        }
+
         wallet.setActive(false);
-        return walletMapper.toResponse(wallet);
+        Wallet deactivatedWallet = walletRepository.save(wallet);
+        return walletMapper.toResponse(deactivatedWallet);
     }
 }

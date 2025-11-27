@@ -10,7 +10,7 @@ spring:
 
   docker:
     compose:
-      enabled: false
+      enabled: true
 
   jpa:
     hibernate:

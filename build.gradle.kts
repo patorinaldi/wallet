@@ -38,6 +38,7 @@ subprojects {
     dependencies {
         compileOnly("org.projectlombok:lombok")
         annotationProcessor("org.projectlombok:lombok")
+        testImplementation(platform("org.testcontainers:testcontainers-bom:1.19.8"))
         testImplementation("org.junit.jupiter:junit-jupiter")
         testRuntimeOnly("org.junit.platform:junit-platform-launcher")
         implementation("org.mapstruct:mapstruct:1.5.5.Final")

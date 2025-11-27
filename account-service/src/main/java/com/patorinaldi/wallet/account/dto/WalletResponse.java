@@ -9,6 +9,5 @@ public record WalletResponse(
         UUID userId,
         Instant createdAt,
         boolean active,
-        String currency,
-        BigDecimal balance
+        String currency
 ) {}
