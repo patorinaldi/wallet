@@ -4,6 +4,10 @@ import com.patorinaldi.wallet.account.dto.CreateWalletRequest;
 import com.patorinaldi.wallet.account.dto.WalletResponse;
 import com.patorinaldi.wallet.account.entity.User;
 import com.patorinaldi.wallet.account.entity.Wallet;
+import com.patorinaldi.wallet.account.exception.UserNotFoundException;
+import com.patorinaldi.wallet.account.exception.WalletAlreadyDeactivatedException;
+import com.patorinaldi.wallet.account.exception.WalletAlreadyExistsException;
+import com.patorinaldi.wallet.account.exception.WalletNotFoundException;
 import com.patorinaldi.wallet.account.mapper.WalletMapper;
 import com.patorinaldi.wallet.account.repository.UserRepository;
 import com.patorinaldi.wallet.account.repository.WalletRepository;
@@ -34,14 +38,14 @@ public class WalletService {
         User user = userRepository.findById(request.userId())
                 .orElseThrow(() -> {
                     log.error("User not found for wallet creation: {}", request.userId());
-                    return new IllegalArgumentException("User doesn't exists");
+                    return new UserNotFoundException(request.userId());
                 });
 
         String currency = request.currency() != null ? request.currency() : "USD";
 
         if (walletRepository.existsByUserIdAndCurrency(request.userId(), currency)) {
             log.warn("User {} already has a {} wallet", request.userId(), currency);
-            throw new IllegalStateException("User already have an " + currency + " wallet");
+            throw new WalletAlreadyExistsException(request.userId(), request.currency());
         }
 
         Wallet wallet = Wallet.builder()
@@ -72,7 +76,7 @@ public class WalletService {
         Wallet wallet = walletRepository.findById(id)
                 .orElseThrow(() -> {
                     log.error("Wallet not found with ID: {}", id);
-                    return new IllegalArgumentException("Id not found");
+                    return new WalletNotFoundException(id);
                 });
 
         return walletMapper.toResponse(wallet);
@@ -101,12 +105,12 @@ public class WalletService {
         Wallet wallet = walletRepository.findById(id)
                 .orElseThrow(() -> {
                     log.error("Wallet not found for deactivation, ID: {}", id);
-                    return new IllegalArgumentException("Id not found");
+                    return new WalletNotFoundException(id);
                 });
 
         if (!wallet.isActive()) {
             log.warn("Wallet already deactivated: {}", id);
-            throw new IllegalStateException("Wallet is already deactivated");
+            throw new WalletAlreadyDeactivatedException(id);
         }
 
         wallet.setActive(false);

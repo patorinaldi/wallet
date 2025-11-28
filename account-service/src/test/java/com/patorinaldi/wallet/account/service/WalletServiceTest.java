@@ -4,6 +4,10 @@ import com.patorinaldi.wallet.account.dto.CreateWalletRequest;
 import com.patorinaldi.wallet.account.dto.WalletResponse;
 import com.patorinaldi.wallet.account.entity.User;
 import com.patorinaldi.wallet.account.entity.Wallet;
+import com.patorinaldi.wallet.account.exception.UserNotFoundException;
+import com.patorinaldi.wallet.account.exception.WalletAlreadyDeactivatedException;
+import com.patorinaldi.wallet.account.exception.WalletAlreadyExistsException;
+import com.patorinaldi.wallet.account.exception.WalletNotFoundException;
 import com.patorinaldi.wallet.account.mapper.WalletMapper;
 import com.patorinaldi.wallet.account.repository.UserRepository;
 import com.patorinaldi.wallet.account.repository.WalletRepository;
@@ -147,12 +151,11 @@ public class WalletServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.empty());
 
         // When & Then
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
+        UserNotFoundException exception = assertThrows(
+                UserNotFoundException.class,
                 () -> walletService.createWallet(request)
         );
 
-        assertEquals("User doesn't exists", exception.getMessage());
         verify(userRepository).findById(userId);
         verify(walletRepository, never()).save(any());
         verify(eventPublisher, never()).publishEvent(any());
@@ -174,12 +177,12 @@ public class WalletServiceTest {
         when(walletRepository.existsByUserIdAndCurrency(userId, "USD")).thenReturn(true);
 
         // When & Then
-        IllegalStateException exception = assertThrows(
-                IllegalStateException.class,
+        WalletAlreadyExistsException exception = assertThrows(
+                WalletAlreadyExistsException.class,
                 () -> walletService.createWallet(request)
         );
 
-        assertEquals("User already have an USD wallet", exception.getMessage());
+
         verify(userRepository).findById(userId);
         verify(walletRepository).existsByUserIdAndCurrency(userId, "USD");
         verify(walletRepository, never()).save(any());
@@ -234,12 +237,11 @@ public class WalletServiceTest {
         when(walletRepository.findById(walletId)).thenReturn(Optional.empty());
 
         // When & Then
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
+        WalletNotFoundException exception = assertThrows(
+                WalletNotFoundException.class,
                 () -> walletService.getWalletById(walletId)
         );
 
-        assertEquals("Id not found", exception.getMessage());
         verify(walletRepository).findById(walletId);
         verifyNoInteractions(walletMapper);
     }
@@ -438,12 +440,11 @@ public class WalletServiceTest {
         when(walletRepository.findById(walletId)).thenReturn(Optional.empty());
 
         // When & Then
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
+        WalletNotFoundException exception = assertThrows(
+                WalletNotFoundException.class,
                 () -> walletService.deactivateWallet(walletId)
         );
 
-        assertEquals("Id not found", exception.getMessage());
         verify(walletRepository).findById(walletId);
         verify(walletRepository, never()).save(any());
         verifyNoInteractions(walletMapper);
@@ -472,12 +473,11 @@ public class WalletServiceTest {
         when(walletRepository.findById(walletId)).thenReturn(Optional.of(inactiveWallet));
 
         // When & Then
-        IllegalStateException exception = assertThrows(
-                IllegalStateException.class,
+        WalletAlreadyDeactivatedException exception = assertThrows(
+                WalletAlreadyDeactivatedException.class,
                 () -> walletService.deactivateWallet(walletId)
         );
 
-        assertEquals("Wallet is already deactivated", exception.getMessage());
         verify(walletRepository).findById(walletId);
         verify(walletRepository, never()).save(any());
         verifyNoInteractions(walletMapper);

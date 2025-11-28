@@ -2,6 +2,9 @@ package com.patorinaldi.wallet.account.service;
 
 import com.patorinaldi.wallet.account.dto.UpdateUserRequest;
 import com.patorinaldi.wallet.account.entity.User;
+import com.patorinaldi.wallet.account.exception.EmailAlreadyExistsException;
+import com.patorinaldi.wallet.account.exception.UserAlreadyDeactivatedException;
+import com.patorinaldi.wallet.account.exception.UserNotFoundException;
 import com.patorinaldi.wallet.account.mapper.UserMapper;
 import com.patorinaldi.wallet.account.repository.UserRepository;
 import com.patorinaldi.wallet.common.event.UserRegisteredEvent;
@@ -30,7 +33,7 @@ public class UserService {
 
         if (userRepository.existsByEmail(createUserRequest.email())) {
             log.warn("Email already registered: {}", createUserRequest.email());
-            throw new IllegalArgumentException("Email already registered");
+            throw new EmailAlreadyExistsException(createUserRequest.email());
         }
 
         User user = User
@@ -61,7 +64,7 @@ public class UserService {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> {
                     log.error("User not found with ID: {}", id);
-                    return new IllegalArgumentException("Id not found");
+                    return new UserNotFoundException(id);
                 });
 
         return userMapper.toResponse(user);
@@ -74,7 +77,7 @@ public class UserService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> {
                     log.error("User not found with email: {}", email);
-                    return new IllegalArgumentException("Email not found");
+                    return new UserNotFoundException(email);
                 });
 
         return userMapper.toResponse(user);
@@ -87,13 +90,13 @@ public class UserService {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> {
                     log.error("User not found for update, ID: {}", id);
-                    return new IllegalArgumentException("User not found");
+                    return new UserNotFoundException(id);
                 });
 
         if (request.email() != null) {
             if (userRepository.existsByEmail(request.email())) {
                 log.warn("Cannot update user {}, email already exists: {}", id, request.email());
-                throw new IllegalArgumentException("Email already exists");
+                throw new EmailAlreadyExistsException(request.email());
             }
             user.setEmail(request.email());
         }
@@ -116,12 +119,12 @@ public class UserService {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> {
                     log.error("User not found for deactivation, ID: {}", id);
-                    return new IllegalArgumentException("User not found");
+                    return new UserNotFoundException(id);
                 });
 
         if (!user.isActive()) {
             log.warn("User already deactivated: {}", id);
-            throw new IllegalStateException("User is already deactivated");
+            throw new UserAlreadyDeactivatedException(id);
         }
 
         user.setActive(false);

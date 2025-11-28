@@ -4,6 +4,9 @@ import com.patorinaldi.wallet.account.dto.CreateUserRequest;
 import com.patorinaldi.wallet.account.dto.UpdateUserRequest;
 import com.patorinaldi.wallet.account.dto.UserResponse;
 import com.patorinaldi.wallet.account.entity.User;
+import com.patorinaldi.wallet.account.exception.EmailAlreadyExistsException;
+import com.patorinaldi.wallet.account.exception.UserAlreadyDeactivatedException;
+import com.patorinaldi.wallet.account.exception.UserNotFoundException;
 import com.patorinaldi.wallet.account.mapper.UserMapper;
 import com.patorinaldi.wallet.account.repository.UserRepository;
 import com.patorinaldi.wallet.common.event.UserRegisteredEvent;
@@ -73,7 +76,7 @@ public class UserServiceTest {
         when(userRepository.existsByEmail(anyString())).thenReturn(true);
 
         // When & Then
-        assertThrows(IllegalArgumentException.class, () -> userService.createUser(request));
+        assertThrows(EmailAlreadyExistsException.class, () -> userService.createUser(request));
     }
 
     @Test
@@ -112,7 +115,7 @@ public class UserServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.empty());
 
         // When & Then
-        assertThrows(IllegalArgumentException.class, () -> userService.getUserById(userId));
+        assertThrows(UserNotFoundException.class, () -> userService.getUserById(userId));
 
         verify(userRepository).findById(userId);
         verifyNoInteractions(userMapper);
@@ -160,7 +163,7 @@ public class UserServiceTest {
         when(userRepository.findByEmail(email)).thenReturn(Optional.empty());
 
         // When & Then
-        assertThrows(IllegalArgumentException.class, () -> userService.getUserByEmail(email));
+        assertThrows(UserNotFoundException.class, () -> userService.getUserByEmail(email));
 
         verify(userRepository).findByEmail(email);
         verifyNoInteractions(userMapper);
@@ -218,7 +221,7 @@ public class UserServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.empty());
 
         // When & Then
-        assertThrows(IllegalArgumentException.class, () -> userService.updateUser(userId, request));
+        assertThrows(UserNotFoundException.class, () -> userService.updateUser(userId, request));
         verify(userRepository).findById(userId);
         verify(userRepository, never()).save(any());
     }
@@ -234,7 +237,7 @@ public class UserServiceTest {
         when(userRepository.existsByEmail(request.email())).thenReturn(true);
 
         // When & Then
-        assertThrows(IllegalArgumentException.class, () -> userService.updateUser(userId, request));
+        assertThrows(EmailAlreadyExistsException.class, () -> userService.updateUser(userId, request));
         verify(userRepository).findById(userId);
         verify(userRepository).existsByEmail(request.email());
         verify(userRepository, never()).save(any());
@@ -269,7 +272,7 @@ public class UserServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.empty());
 
         // When & Then
-        assertThrows(IllegalArgumentException.class, () -> userService.deactivateUser(userId));
+        assertThrows(UserNotFoundException.class, () -> userService.deactivateUser(userId));
     }
 
     @Test
@@ -280,6 +283,6 @@ public class UserServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(inactiveUser));
 
         // When & Then
-        assertThrows(IllegalStateException.class, () -> userService.deactivateUser(userId));
+        assertThrows(UserAlreadyDeactivatedException.class, () -> userService.deactivateUser(userId));
     }
 }
