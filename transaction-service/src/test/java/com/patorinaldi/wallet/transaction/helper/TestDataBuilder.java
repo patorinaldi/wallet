@@ -103,4 +103,16 @@ public class TestDataBuilder {
                 .idempotencyKey(idempotencyKey)
                 .build();
     }
+
+    public static Transaction createTransaction(UUID walletId, UUID userId, TransactionType type, BigDecimal amount) {
+        return Transaction.builder()
+                .type(type)
+                .status(TransactionStatus.COMPLETED)
+                .walletId(walletId)
+                .userId(userId)
+                .amount(amount)
+                .currency("USD")
+                .idempotencyKey("IDEMPOTENCY-" + UUID.randomUUID())
+                .build();
+    }
 }

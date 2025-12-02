@@ -1,19 +1,19 @@
 package com.patorinaldi.wallet.transaction.controller;
 
-import com.patorinaldi.wallet.transaction.dto.DepositRequest;
-import com.patorinaldi.wallet.transaction.dto.TransactionResponse;
-import com.patorinaldi.wallet.transaction.dto.TransferRequest;
-import com.patorinaldi.wallet.transaction.dto.WithdrawalRequest;
+import com.patorinaldi.wallet.transaction.dto.*;
 import com.patorinaldi.wallet.transaction.service.TransactionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/transactions")
@@ -44,4 +44,26 @@ public class TransactionController {
         return ResponseEntity.status(HttpStatus.CREATED).body(transactionService.transfer(request));
     }
 
+    @GetMapping
+    public ResponseEntity<Page<TransactionResponse>> getTransactions(
+            @RequestParam UUID walletId,
+            Pageable pageable
+    ) {
+        return ResponseEntity.ok().body(
+                transactionService.getTransactionsByWallet(walletId, pageable));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<TransactionResponse> getTransaction(@PathVariable UUID id) {
+
+        return ResponseEntity.ok().body(
+                transactionService.getTransactionById(id));
+    }
+
+    @GetMapping("/balances/{walletId}")
+    public ResponseEntity<BalanceResponse> getBalance(@PathVariable UUID walletId) {
+        return ResponseEntity.ok(
+                transactionService.getBalance(walletId)
+        );
+    }
 }

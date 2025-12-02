@@ -3,6 +3,7 @@ package com.patorinaldi.wallet.transaction.exception.handler;
 import com.patorinaldi.wallet.transaction.dto.ErrorResponse;
 import com.patorinaldi.wallet.transaction.exception.DuplicateTransactionException;
 import com.patorinaldi.wallet.transaction.exception.InsufficientBalanceException;
+import com.patorinaldi.wallet.transaction.exception.TransactionNotFoundException;
 import com.patorinaldi.wallet.transaction.exception.WalletBalanceNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -31,9 +32,10 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
-    @ExceptionHandler(WalletBalanceNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleWalletBalanceNotFound(
-            WalletBalanceNotFoundException ex,
+    @ExceptionHandler({WalletBalanceNotFoundException.class,
+            TransactionNotFoundException.class})
+    public ResponseEntity<ErrorResponse> handleNotFound(
+            RuntimeException ex,
             HttpServletRequest request) {
 
         ErrorResponse response = new ErrorResponse(

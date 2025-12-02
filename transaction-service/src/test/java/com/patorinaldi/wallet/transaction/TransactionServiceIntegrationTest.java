@@ -2,6 +2,7 @@ package com.patorinaldi.wallet.transaction;
 
 import com.patorinaldi.wallet.common.enums.TransactionStatus;
 import com.patorinaldi.wallet.common.enums.TransactionType;
+import com.patorinaldi.wallet.transaction.dto.BalanceResponse;
 import com.patorinaldi.wallet.transaction.dto.DepositRequest;
 import com.patorinaldi.wallet.transaction.dto.ErrorResponse;
 import com.patorinaldi.wallet.transaction.dto.TransactionResponse;
@@ -588,5 +589,230 @@ public class TransactionServiceIntegrationTest {
         // Wallet balance should be unchanged
         WalletBalance unchangedWallet = walletBalanceRepository.findByWalletId(wallet.getWalletId()).orElseThrow();
         assertEquals(new BigDecimal("50.0000"), unchangedWallet.getBalance());
+    }
+
+    // ========== QUERY ENDPOINT TESTS ==========
+
+    @Test
+    void shouldGetTransactionsByWalletId() {
+        // Given - wallet with multiple transactions
+        WalletBalance wallet = setupWalletWithBalance(new BigDecimal("200.00"));
+
+        DepositRequest depositRequest = TestDataBuilder.createDepositRequest(
+                wallet.getWalletId(),
+                new BigDecimal("100.00"),
+                "Deposit 1"
+        );
+        restTestClient.post()
+                .uri("/api/transactions/deposit")
+                .body(depositRequest)
+                .exchange()
+                .expectStatus().isCreated();
+
+        WithdrawalRequest withdrawalRequest = TestDataBuilder.createWithdrawalRequest(
+                wallet.getWalletId(),
+                new BigDecimal("50.00"),
+                "Withdrawal 1"
+        );
+        restTestClient.post()
+                .uri("/api/transactions/withdrawal")
+                .body(withdrawalRequest)
+                .exchange()
+                .expectStatus().isCreated();
+
+        // When - get transactions for wallet
+        String response = restTestClient.get()
+                .uri("/api/transactions?walletId=" + wallet.getWalletId() + "&page=0&size=10")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class)
+                .returnResult()
+                .getResponseBody();
+
+        // Then
+        assertNotNull(response);
+        assertTrue(response.contains("\"totalElements\":2"));
+        assertTrue(response.contains("DEPOSIT"));
+        assertTrue(response.contains("WITHDRAWAL"));
+    }
+
+    @Test
+    void shouldGetEmptyPageForWalletWithNoTransactions() {
+        // Given - wallet with no transactions
+        WalletBalance wallet = setupWalletWithBalance(new BigDecimal("100.00"));
+
+        // When
+        String response = restTestClient.get()
+                .uri("/api/transactions?walletId=" + wallet.getWalletId() + "&page=0&size=10")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class)
+                .returnResult()
+                .getResponseBody();
+
+        // Then
+        assertNotNull(response);
+        assertTrue(response.contains("\"totalElements\":0"));
+        assertTrue(response.contains("\"content\":[]"));
+    }
+
+    @Test
+    void shouldGetTransactionById() {
+        // Given - create a transaction
+        WalletBalance wallet = setupWalletWithBalance(new BigDecimal("100.00"));
+        DepositRequest request = TestDataBuilder.createDepositRequest(
+                wallet.getWalletId(),
+                new BigDecimal("50.00"),
+                "Test deposit"
+        );
+
+        TransactionResponse createdTransaction = restTestClient.post()
+                .uri("/api/transactions/deposit")
+                .body(request)
+                .exchange()
+                .expectStatus().isCreated()
+                .expectBody(TransactionResponse.class)
+                .returnResult()
+                .getResponseBody();
+
+        assertNotNull(createdTransaction);
+        UUID transactionId = createdTransaction.id();
+
+        // When - get transaction by ID
+        TransactionResponse response = restTestClient.get()
+                .uri("/api/transactions/" + transactionId)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(TransactionResponse.class)
+                .returnResult()
+                .getResponseBody();
+
+        // Then
+        assertNotNull(response);
+        assertEquals(transactionId, response.id());
+        assertEquals(TransactionType.DEPOSIT, response.type());
+        assertEquals(TransactionStatus.COMPLETED, response.status());
+        assertEquals(0, response.amount().compareTo(new BigDecimal("50.00")));
+    }
+
+    @Test
+    void shouldReturn404ForNonExistentTransaction() {
+        // Given
+        UUID nonExistentId = UUID.randomUUID();
+
+        // When
+        ErrorResponse errorResponse = restTestClient.get()
+                .uri("/api/transactions/" + nonExistentId)
+                .exchange()
+                .expectStatus().isNotFound()
+                .expectBody(ErrorResponse.class)
+                .returnResult()
+                .getResponseBody();
+
+        // Then
+        assertNotNull(errorResponse);
+        assertEquals(404, errorResponse.status());
+        assertTrue(errorResponse.message().contains("Transaction not found"));
+    }
+
+    @Test
+    void shouldGetBalance() {
+        // Given - wallet with initial balance and some transactions
+        WalletBalance wallet = setupWalletWithBalance(new BigDecimal("200.00"));
+
+        DepositRequest depositRequest = TestDataBuilder.createDepositRequest(
+                wallet.getWalletId(),
+                new BigDecimal("100.00"),
+                "Deposit"
+        );
+        restTestClient.post()
+                .uri("/api/transactions/deposit")
+                .body(depositRequest)
+                .exchange()
+                .expectStatus().isCreated();
+
+        WithdrawalRequest withdrawalRequest = TestDataBuilder.createWithdrawalRequest(
+                wallet.getWalletId(),
+                new BigDecimal("50.00"),
+                "Withdrawal"
+        );
+        restTestClient.post()
+                .uri("/api/transactions/withdrawal")
+                .body(withdrawalRequest)
+                .exchange()
+                .expectStatus().isCreated();
+
+        // When - get balance
+        BalanceResponse response = restTestClient.get()
+                .uri("/api/transactions/balances/" + wallet.getWalletId())
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(BalanceResponse.class)
+                .returnResult()
+                .getResponseBody();
+
+        // Then
+        assertNotNull(response);
+        assertEquals(wallet.getWalletId(), response.walletId());
+        assertEquals(wallet.getUserId(), response.userId());
+        assertEquals(0, response.balance().compareTo(new BigDecimal("250.00"))); // 200 + 100 - 50 = 250
+        assertEquals("USD", response.currency());
+        assertNotNull(response.lastUpdated());
+    }
+
+    @Test
+    void shouldReturn404ForNonExistentWalletBalance() {
+        // Given
+        UUID nonExistentWalletId = UUID.randomUUID();
+
+        // When
+        ErrorResponse errorResponse = restTestClient.get()
+                .uri("/api/transactions/balances/" + nonExistentWalletId)
+                .exchange()
+                .expectStatus().isNotFound()
+                .expectBody(ErrorResponse.class)
+                .returnResult()
+                .getResponseBody();
+
+        // Then
+        assertNotNull(errorResponse);
+        assertEquals(404, errorResponse.status());
+        assertTrue(errorResponse.message().contains("Wallet balance not found"));
+    }
+
+    @Test
+    void shouldSupportPaginationForTransactions() {
+        // Given - wallet with many transactions
+        WalletBalance wallet = setupWalletWithBalance(new BigDecimal("500.00"));
+
+        // Create 5 transactions
+        for (int i = 0; i < 5; i++) {
+            DepositRequest request = TestDataBuilder.createDepositRequest(
+                    wallet.getWalletId(),
+                    new BigDecimal("10.00"),
+                    "Deposit " + i
+            );
+            restTestClient.post()
+                    .uri("/api/transactions/deposit")
+                    .body(request)
+                    .exchange()
+                    .expectStatus().isCreated();
+        }
+
+        // When - get first page with size 2
+        String firstPage = restTestClient.get()
+                .uri("/api/transactions?walletId=" + wallet.getWalletId() + "&page=0&size=2")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class)
+                .returnResult()
+                .getResponseBody();
+
+        // Then - verify pagination
+        assertNotNull(firstPage);
+        assertTrue(firstPage.contains("\"totalElements\":5"));
+        assertTrue(firstPage.contains("\"totalPages\":3"));
+        assertTrue(firstPage.contains("\"size\":2"));
+        assertTrue(firstPage.contains("\"number\":0")); // page number
     }
 }

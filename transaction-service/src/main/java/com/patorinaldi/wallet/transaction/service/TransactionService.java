@@ -2,23 +2,25 @@ package com.patorinaldi.wallet.transaction.service;
 
 import com.patorinaldi.wallet.common.enums.TransactionStatus;
 import com.patorinaldi.wallet.common.enums.TransactionType;
-import com.patorinaldi.wallet.transaction.dto.DepositRequest;
-import com.patorinaldi.wallet.transaction.dto.TransactionResponse;
-import com.patorinaldi.wallet.transaction.dto.TransferRequest;
-import com.patorinaldi.wallet.transaction.dto.WithdrawalRequest;
+import com.patorinaldi.wallet.transaction.dto.*;
 import com.patorinaldi.wallet.transaction.entity.Transaction;
 import com.patorinaldi.wallet.transaction.entity.WalletBalance;
 import com.patorinaldi.wallet.transaction.exception.DuplicateTransactionException;
 import com.patorinaldi.wallet.transaction.exception.InsufficientBalanceException;
+import com.patorinaldi.wallet.transaction.exception.TransactionNotFoundException;
 import com.patorinaldi.wallet.transaction.exception.WalletBalanceNotFoundException;
+import com.patorinaldi.wallet.transaction.mapper.BalanceMapper;
 import com.patorinaldi.wallet.transaction.mapper.TransactionMapper;
 import com.patorinaldi.wallet.transaction.repository.TransactionRepository;
 import com.patorinaldi.wallet.transaction.repository.WalletBalanceRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.ResponseEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -29,6 +31,7 @@ public class TransactionService {
     private final WalletBalanceRepository walletBalanceRepository;
     private final TransactionMapper transactionMapper;
     private final TransactionPersistenceService persistenceService;
+    private final BalanceMapper balanceMapper;
 
     @Transactional
     public TransactionResponse deposit(DepositRequest request) {
@@ -36,16 +39,16 @@ public class TransactionService {
         log.info("Processing deposit for wallet: {}, amount: {}",
                 request.walletId(), request.amount());
 
-        if(transactionRepository.existsByIdempotencyKey(request.idempotencyKey())) {
+        if (transactionRepository.existsByIdempotencyKey(request.idempotencyKey())) {
             log.warn("Duplicate transaction detected: {}", request.idempotencyKey());
             throw new DuplicateTransactionException(request.idempotencyKey());
         }
 
         WalletBalance walletBalance = walletBalanceRepository.findByWalletId(request.walletId())
                 .orElseThrow(() -> {
-                            log.error("Wallet balance not found: {}", request.walletId());
-                            return new WalletBalanceNotFoundException(request.walletId());
-                        });
+                    log.error("Wallet balance not found: {}", request.walletId());
+                    return new WalletBalanceNotFoundException(request.walletId());
+                });
 
         Transaction transaction = Transaction.builder()
                 .amount(request.amount())
@@ -76,7 +79,7 @@ public class TransactionService {
         log.info("Processing withdrawal for wallet: {}, amount: {}",
                 request.walletId(), request.amount());
 
-        if(transactionRepository.existsByIdempotencyKey(request.idempotencyKey())) {
+        if (transactionRepository.existsByIdempotencyKey(request.idempotencyKey())) {
             log.warn("Duplicate transaction detected: {}", request.idempotencyKey());
             throw new DuplicateTransactionException(request.idempotencyKey());
         }
@@ -98,7 +101,7 @@ public class TransactionService {
                 .description(request.description())
                 .build();
 
-        try  {
+        try {
             walletBalance.debit(transaction.getAmount());
             transaction.complete(walletBalance.getBalance());
             transactionRepository.save(transaction);
@@ -124,7 +127,7 @@ public class TransactionService {
         String outKey = request.idempotencyKey() + ":out";
         String inKey = request.idempotencyKey() + ":in";
 
-        if(transactionRepository.existsByIdempotencyKey(outKey) || transactionRepository.existsByIdempotencyKey(inKey)) {
+        if (transactionRepository.existsByIdempotencyKey(outKey) || transactionRepository.existsByIdempotencyKey(inKey)) {
             log.warn("Duplicate transaction detected: {}", request.idempotencyKey());
             throw new DuplicateTransactionException(request.idempotencyKey());
         }
@@ -163,7 +166,7 @@ public class TransactionService {
                 .description(request.description())
                 .build();
 
-        try  {
+        try {
             sourceWalletBalance.debit(transactionOut.getAmount());
             destinationWalletBalance.credit(transactionIn.getAmount());
             transactionOut.complete(sourceWalletBalance.getBalance());
@@ -194,5 +197,34 @@ public class TransactionService {
         }
 
         return transactionMapper.toResponse(transactionOut);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<TransactionResponse> getTransactionsByWallet(UUID walletId, Pageable pageable) {
+        final Page<Transaction> transactions = transactionRepository.findByWalletId(walletId, pageable);
+
+        return transactions.map(transactionMapper::toResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public TransactionResponse getTransactionById(UUID id) {
+        return transactionMapper.toResponse(
+                transactionRepository.findById(id).orElseThrow(() -> {
+                    log.warn("Transaction not found for id: {}", id);
+                    return new TransactionNotFoundException(id);
+                })
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public BalanceResponse getBalance(UUID walletId) {
+        return balanceMapper.toResponse(
+                walletBalanceRepository.findByWalletId(walletId).orElseThrow(
+                        () -> {
+                            log.warn("Wallet balance not found: {}", (walletId));
+                            return new WalletBalanceNotFoundException(walletId);
+                        }
+                )
+        );
     }
 }

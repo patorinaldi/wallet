@@ -2,16 +2,15 @@ package com.patorinaldi.wallet.transaction.service;
 
 import com.patorinaldi.wallet.common.enums.TransactionStatus;
 import com.patorinaldi.wallet.common.enums.TransactionType;
-import com.patorinaldi.wallet.transaction.dto.DepositRequest;
-import com.patorinaldi.wallet.transaction.dto.TransactionResponse;
-import com.patorinaldi.wallet.transaction.dto.TransferRequest;
-import com.patorinaldi.wallet.transaction.dto.WithdrawalRequest;
+import com.patorinaldi.wallet.transaction.dto.*;
 import com.patorinaldi.wallet.transaction.entity.Transaction;
 import com.patorinaldi.wallet.transaction.entity.WalletBalance;
 import com.patorinaldi.wallet.transaction.exception.DuplicateTransactionException;
 import com.patorinaldi.wallet.transaction.exception.InsufficientBalanceException;
+import com.patorinaldi.wallet.transaction.exception.TransactionNotFoundException;
 import com.patorinaldi.wallet.transaction.exception.WalletBalanceNotFoundException;
 import com.patorinaldi.wallet.transaction.helper.TestDataBuilder;
+import com.patorinaldi.wallet.transaction.mapper.BalanceMapper;
 import com.patorinaldi.wallet.transaction.mapper.TransactionMapper;
 import com.patorinaldi.wallet.transaction.repository.TransactionRepository;
 import com.patorinaldi.wallet.transaction.repository.WalletBalanceRepository;
@@ -21,8 +20,13 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -45,6 +49,9 @@ class TransactionServiceTest {
 
     @Mock
     private TransactionPersistenceService persistenceService;
+
+    @Mock
+    private BalanceMapper balanceMapper;
 
     @InjectMocks
     private TransactionService transactionService;
@@ -331,5 +338,131 @@ class TransactionServiceTest {
 
         verify(walletBalanceRepository).findByWalletId(sourceWalletId);
         verify(walletBalanceRepository).findByWalletId(destWalletId);
+    }
+
+    // ========== QUERY TESTS ==========
+
+    @Test
+    void getTransactionsByWallet_shouldReturnPagedTransactions_whenWalletHasTransactions() {
+        // Given
+        UUID walletId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Pageable pageable = PageRequest.of(0, 10);
+
+        Transaction tx1 = TestDataBuilder.createTransaction(walletId, userId, TransactionType.DEPOSIT, new BigDecimal("100.00"));
+        Transaction tx2 = TestDataBuilder.createTransaction(walletId, userId, TransactionType.WITHDRAWAL, new BigDecimal("50.00"));
+        Page<Transaction> transactionPage = new PageImpl<>(List.of(tx1, tx2), pageable, 2);
+
+        TransactionResponse response1 = mock(TransactionResponse.class);
+        TransactionResponse response2 = mock(TransactionResponse.class);
+
+        when(transactionRepository.findByWalletId(walletId, pageable)).thenReturn(transactionPage);
+        when(transactionMapper.toResponse(tx1)).thenReturn(response1);
+        when(transactionMapper.toResponse(tx2)).thenReturn(response2);
+
+        // When
+        Page<TransactionResponse> result = transactionService.getTransactionsByWallet(walletId, pageable);
+
+        // Then
+        assertNotNull(result);
+        assertEquals(2, result.getTotalElements());
+        assertEquals(2, result.getContent().size());
+        verify(transactionRepository).findByWalletId(walletId, pageable);
+        verify(transactionMapper, times(2)).toResponse(any(Transaction.class));
+    }
+
+    @Test
+    void getTransactionsByWallet_shouldReturnEmptyPage_whenNoTransactions() {
+        // Given
+        UUID walletId = UUID.randomUUID();
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<Transaction> emptyPage = new PageImpl<>(List.of(), pageable, 0);
+
+        when(transactionRepository.findByWalletId(walletId, pageable)).thenReturn(emptyPage);
+
+        // When
+        Page<TransactionResponse> result = transactionService.getTransactionsByWallet(walletId, pageable);
+
+        // Then
+        assertNotNull(result);
+        assertEquals(0, result.getTotalElements());
+        assertTrue(result.getContent().isEmpty());
+        verify(transactionRepository).findByWalletId(walletId, pageable);
+        verify(transactionMapper, never()).toResponse(any());
+    }
+
+    @Test
+    void getTransactionById_shouldReturnTransaction_whenExists() {
+        // Given
+        UUID transactionId = UUID.randomUUID();
+        UUID walletId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Transaction transaction = TestDataBuilder.createTransaction(walletId, userId, TransactionType.DEPOSIT, new BigDecimal("100.00"));
+        transaction.setId(transactionId);
+
+        TransactionResponse expectedResponse = mock(TransactionResponse.class);
+
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+        when(transactionMapper.toResponse(transaction)).thenReturn(expectedResponse);
+
+        // When
+        TransactionResponse result = transactionService.getTransactionById(transactionId);
+
+        // Then
+        assertNotNull(result);
+        assertEquals(expectedResponse, result);
+        verify(transactionRepository).findById(transactionId);
+        verify(transactionMapper).toResponse(transaction);
+    }
+
+    @Test
+    void getTransactionById_shouldThrowNotFoundException_whenNotExists() {
+        // Given
+        UUID transactionId = UUID.randomUUID();
+
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.empty());
+
+        // When & Then
+        assertThrows(TransactionNotFoundException.class, () -> transactionService.getTransactionById(transactionId));
+
+        verify(transactionRepository).findById(transactionId);
+        verify(transactionMapper, never()).toResponse(any());
+    }
+
+    @Test
+    void getBalance_shouldReturnBalance_whenWalletExists() {
+        // Given
+        UUID walletId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        BigDecimal balance = new BigDecimal("500.00");
+        WalletBalance walletBalance = TestDataBuilder.createWalletBalance(walletId, userId, balance, "USD");
+
+        BalanceResponse expectedResponse = mock(BalanceResponse.class);
+
+        when(walletBalanceRepository.findByWalletId(walletId)).thenReturn(Optional.of(walletBalance));
+        when(balanceMapper.toResponse(walletBalance)).thenReturn(expectedResponse);
+
+        // When
+        BalanceResponse result = transactionService.getBalance(walletId);
+
+        // Then
+        assertNotNull(result);
+        assertEquals(expectedResponse, result);
+        verify(walletBalanceRepository).findByWalletId(walletId);
+        verify(balanceMapper).toResponse(walletBalance);
+    }
+
+    @Test
+    void getBalance_shouldThrowNotFoundException_whenWalletNotFound() {
+        // Given
+        UUID walletId = UUID.randomUUID();
+
+        when(walletBalanceRepository.findByWalletId(walletId)).thenReturn(Optional.empty());
+
+        // When & Then
+        assertThrows(WalletBalanceNotFoundException.class, () -> transactionService.getBalance(walletId));
+
+        verify(walletBalanceRepository).findByWalletId(walletId);
+        verify(balanceMapper, never()).toResponse(any());
     }
 }
