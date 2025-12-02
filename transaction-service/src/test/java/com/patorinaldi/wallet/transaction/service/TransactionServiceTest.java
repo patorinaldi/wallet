@@ -2,6 +2,8 @@ package com.patorinaldi.wallet.transaction.service;
 
 import com.patorinaldi.wallet.common.enums.TransactionStatus;
 import com.patorinaldi.wallet.common.enums.TransactionType;
+import com.patorinaldi.wallet.common.event.TransactionCompletedEvent;
+import com.patorinaldi.wallet.common.event.TransactionFailedEvent;
 import com.patorinaldi.wallet.transaction.dto.*;
 import com.patorinaldi.wallet.transaction.entity.Transaction;
 import com.patorinaldi.wallet.transaction.entity.WalletBalance;
@@ -20,6 +22,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -53,6 +56,9 @@ class TransactionServiceTest {
     @Mock
     private BalanceMapper balanceMapper;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     @InjectMocks
     private TransactionService transactionService;
 
@@ -85,6 +91,7 @@ class TransactionServiceTest {
         verify(transactionRepository).save(any(Transaction.class));
         verify(walletBalanceRepository).save(walletBalance);
         verify(transactionMapper).toResponse(any(Transaction.class));
+        verify(eventPublisher).publishEvent(any(TransactionCompletedEvent.class));
 
         assertEquals(new BigDecimal("150.00"), walletBalance.getBalance());
     }
@@ -150,6 +157,7 @@ class TransactionServiceTest {
         verify(walletBalanceRepository).findByWalletId(walletId);
         verify(transactionRepository).save(any(Transaction.class));
         verify(walletBalanceRepository).save(walletBalance);
+        verify(eventPublisher).publishEvent(any(TransactionCompletedEvent.class));
 
         assertEquals(new BigDecimal("70.00"), walletBalance.getBalance());
     }
@@ -175,6 +183,7 @@ class TransactionServiceTest {
                 tx.getStatus() == TransactionStatus.FAILED &&
                 tx.getErrorMessage() != null
         ));
+        verify(eventPublisher).publishEvent(any(TransactionFailedEvent.class));
         verify(walletBalanceRepository, never()).save(any(WalletBalance.class));
 
         assertEquals(initialBalance, walletBalance.getBalance());
@@ -252,6 +261,7 @@ class TransactionServiceTest {
         verify(walletBalanceRepository).findByWalletId(destWalletId);
         verify(transactionRepository, times(4)).save(any(Transaction.class)); // 2 initial saves + 2 saves with links
         verify(walletBalanceRepository, times(2)).save(any(WalletBalance.class));
+        verify(eventPublisher, times(2)).publishEvent(any(TransactionCompletedEvent.class)); // One for OUT, one for IN
 
         assertEquals(new BigDecimal("125.00"), sourceWallet.getBalance());
         assertEquals(new BigDecimal("125.00"), destWallet.getBalance());
@@ -283,6 +293,7 @@ class TransactionServiceTest {
                 tx.getType() == TransactionType.TRANSFER_OUT &&
                 tx.getStatus() == TransactionStatus.FAILED
         ));
+        verify(eventPublisher).publishEvent(any(TransactionFailedEvent.class));
 
         assertEquals(sourceBalance, sourceWallet.getBalance());
         assertEquals(destBalance, destWallet.getBalance());
