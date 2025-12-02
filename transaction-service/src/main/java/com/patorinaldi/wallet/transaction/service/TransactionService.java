@@ -4,6 +4,7 @@ import com.patorinaldi.wallet.common.enums.TransactionStatus;
 import com.patorinaldi.wallet.common.enums.TransactionType;
 import com.patorinaldi.wallet.transaction.dto.DepositRequest;
 import com.patorinaldi.wallet.transaction.dto.TransactionResponse;
+import com.patorinaldi.wallet.transaction.dto.TransferRequest;
 import com.patorinaldi.wallet.transaction.dto.WithdrawalRequest;
 import com.patorinaldi.wallet.transaction.entity.Transaction;
 import com.patorinaldi.wallet.transaction.entity.WalletBalance;
@@ -15,6 +16,7 @@ import com.patorinaldi.wallet.transaction.repository.TransactionRepository;
 import com.patorinaldi.wallet.transaction.repository.WalletBalanceRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -111,5 +113,86 @@ public class TransactionService {
         }
 
         return transactionMapper.toResponse(transaction);
+    }
+
+    @Transactional
+    public TransactionResponse transfer(TransferRequest request) {
+
+        log.info("Processing transfer from wallet: {} to wallet: {}, amount: {}",
+                request.sourceWalletId(), request.destinationWalletId(), request.amount());
+
+        String outKey = request.idempotencyKey() + ":out";
+        String inKey = request.idempotencyKey() + ":in";
+
+        if(transactionRepository.existsByIdempotencyKey(outKey) || transactionRepository.existsByIdempotencyKey(inKey)) {
+            log.warn("Duplicate transaction detected: {}", request.idempotencyKey());
+            throw new DuplicateTransactionException(request.idempotencyKey());
+        }
+
+        WalletBalance sourceWalletBalance = walletBalanceRepository.findByWalletId(request.sourceWalletId())
+                .orElseThrow(() -> {
+                    log.error("Source wallet balance not found: {}", request.sourceWalletId());
+                    return new WalletBalanceNotFoundException(request.sourceWalletId());
+                });
+
+        WalletBalance destinationWalletBalance = walletBalanceRepository.findByWalletId(request.destinationWalletId())
+                .orElseThrow(() -> {
+                    log.error("Destination wallet balance not found: {}", request.destinationWalletId());
+                    return new WalletBalanceNotFoundException(request.destinationWalletId());
+                });
+
+        Transaction transactionOut = Transaction.builder()
+                .amount(request.amount())
+                .idempotencyKey(outKey)
+                .type(TransactionType.TRANSFER_OUT)
+                .status(TransactionStatus.PENDING)
+                .walletId(sourceWalletBalance.getWalletId())
+                .userId(sourceWalletBalance.getUserId())
+                .currency(sourceWalletBalance.getCurrency())
+                .description(request.description())
+                .build();
+
+        Transaction transactionIn = Transaction.builder()
+                .amount(request.amount())
+                .idempotencyKey(inKey)
+                .type(TransactionType.TRANSFER_IN)
+                .status(TransactionStatus.PENDING)
+                .walletId(destinationWalletBalance.getWalletId())
+                .userId(destinationWalletBalance.getUserId())
+                .currency(destinationWalletBalance.getCurrency())
+                .description(request.description())
+                .build();
+
+        try  {
+            sourceWalletBalance.debit(transactionOut.getAmount());
+            destinationWalletBalance.credit(transactionIn.getAmount());
+            transactionOut.complete(sourceWalletBalance.getBalance());
+            transactionIn.complete(destinationWalletBalance.getBalance());
+
+            transactionRepository.save(transactionOut);
+            transactionRepository.save(transactionIn);
+
+            transactionOut.setRelatedWalletId(transactionIn.getWalletId());
+            transactionOut.setRelatedTransactionId(transactionIn.getId());
+
+            transactionIn.setRelatedWalletId(transactionOut.getWalletId());
+            transactionIn.setRelatedTransactionId(transactionOut.getId());
+
+            transactionRepository.save(transactionOut);
+            transactionRepository.save(transactionIn);
+
+            walletBalanceRepository.save(sourceWalletBalance);
+            walletBalanceRepository.save(destinationWalletBalance);
+            log.info("Transfer completed successfully for source wallet: {}, new balance: {}, destination wallet: {}, new balance: {}",
+                    sourceWalletBalance.getWalletId(), sourceWalletBalance.getBalance(),
+                    destinationWalletBalance.getWalletId(), destinationWalletBalance.getBalance());
+        } catch (InsufficientBalanceException e) {
+            log.error("Insufficient balance for transfer...");
+            transactionOut.fail(e.getMessage());
+            persistenceService.saveFailedTransaction(transactionOut);
+            throw e;
+        }
+
+        return transactionMapper.toResponse(transactionOut);
     }
 }

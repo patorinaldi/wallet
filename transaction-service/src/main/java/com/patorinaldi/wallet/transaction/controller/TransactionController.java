@@ -2,6 +2,7 @@ package com.patorinaldi.wallet.transaction.controller;
 
 import com.patorinaldi.wallet.transaction.dto.DepositRequest;
 import com.patorinaldi.wallet.transaction.dto.TransactionResponse;
+import com.patorinaldi.wallet.transaction.dto.TransferRequest;
 import com.patorinaldi.wallet.transaction.dto.WithdrawalRequest;
 import com.patorinaldi.wallet.transaction.service.TransactionService;
 import jakarta.validation.Valid;
@@ -34,6 +35,13 @@ public class TransactionController {
         log.info("Withdrawal request received for wallet: {}, amount: {}",
                 request.walletId(), request.amount());
         return ResponseEntity.status(HttpStatus.CREATED).body(transactionService.withdrawal(request));
+    }
+
+    @PostMapping("/transfer")
+    public ResponseEntity<TransactionResponse> transfer(@Valid @RequestBody TransferRequest request) {
+        log.info("Transfer request received source wallet: {}, destination wallet: {}, amount: {}",
+                request.sourceWalletId(), request.destinationWalletId(), request.amount());
+        return ResponseEntity.status(HttpStatus.CREATED).body(transactionService.transfer(request));
     }
 
 }
