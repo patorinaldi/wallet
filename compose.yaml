@@ -63,6 +63,17 @@ services:
       kafka:
         condition: service_healthy
 
+  zipkin:
+    image: openzipkin/zipkin:latest
+    container_name: wallet-zipkin
+    ports:
+      - "9411:9411"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9411/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres_data:
   redis_data:
