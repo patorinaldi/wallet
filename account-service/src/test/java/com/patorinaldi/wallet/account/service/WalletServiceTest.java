@@ -26,7 +26,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -151,7 +155,7 @@ public class WalletServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.empty());
 
         // When & Then
-        UserNotFoundException exception = assertThrows(
+        assertThrows(
                 UserNotFoundException.class,
                 () -> walletService.createWallet(request)
         );
@@ -177,11 +181,10 @@ public class WalletServiceTest {
         when(walletRepository.existsByUserIdAndCurrency(userId, "USD")).thenReturn(true);
 
         // When & Then
-        WalletAlreadyExistsException exception = assertThrows(
+        assertThrows(
                 WalletAlreadyExistsException.class,
                 () -> walletService.createWallet(request)
         );
-
 
         verify(userRepository).findById(userId);
         verify(walletRepository).existsByUserIdAndCurrency(userId, "USD");
@@ -237,7 +240,7 @@ public class WalletServiceTest {
         when(walletRepository.findById(walletId)).thenReturn(Optional.empty());
 
         // When & Then
-        WalletNotFoundException exception = assertThrows(
+        assertThrows(
                 WalletNotFoundException.class,
                 () -> walletService.getWalletById(walletId)
         );
@@ -440,7 +443,7 @@ public class WalletServiceTest {
         when(walletRepository.findById(walletId)).thenReturn(Optional.empty());
 
         // When & Then
-        WalletNotFoundException exception = assertThrows(
+        assertThrows(
                 WalletNotFoundException.class,
                 () -> walletService.deactivateWallet(walletId)
         );
@@ -473,7 +476,7 @@ public class WalletServiceTest {
         when(walletRepository.findById(walletId)).thenReturn(Optional.of(inactiveWallet));
 
         // When & Then
-        WalletAlreadyDeactivatedException exception = assertThrows(
+        assertThrows(
                 WalletAlreadyDeactivatedException.class,
                 () -> walletService.deactivateWallet(walletId)
         );

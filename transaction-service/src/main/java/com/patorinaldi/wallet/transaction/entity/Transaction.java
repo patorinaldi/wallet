@@ -5,7 +5,6 @@ import lombok.*;
 import com.patorinaldi.wallet.common.enums.TransactionType;
 import com.patorinaldi.wallet.common.enums.TransactionStatus;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.Instant;
