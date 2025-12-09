@@ -2,6 +2,7 @@ package com.patorinaldi.wallet.transaction;
 
 import com.patorinaldi.wallet.common.enums.TransactionStatus;
 import com.patorinaldi.wallet.common.enums.TransactionType;
+import com.patorinaldi.wallet.common.event.UserBlockedEvent;
 import com.patorinaldi.wallet.transaction.dto.BalanceResponse;
 import com.patorinaldi.wallet.transaction.dto.DepositRequest;
 import com.patorinaldi.wallet.transaction.dto.ErrorResponse;
@@ -11,6 +12,7 @@ import com.patorinaldi.wallet.transaction.dto.WithdrawalRequest;
 import com.patorinaldi.wallet.transaction.entity.Transaction;
 import com.patorinaldi.wallet.transaction.entity.WalletBalance;
 import com.patorinaldi.wallet.transaction.helper.TestDataBuilder;
+import com.patorinaldi.wallet.transaction.repository.BlockedUserRepository;
 import com.patorinaldi.wallet.transaction.repository.TransactionRepository;
 import com.patorinaldi.wallet.transaction.repository.WalletBalanceRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +20,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.http.HttpStatus;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.client.RestTestClient;
@@ -28,10 +32,13 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 
 @Testcontainers
@@ -61,6 +68,12 @@ public class TransactionServiceIntegrationTest {
     @Autowired
     private WalletBalanceRepository walletBalanceRepository;
 
+    @Autowired
+    private BlockedUserRepository blockedUserRepository;
+
+    @Autowired
+    private KafkaTemplate<String, Object> kafkaTemplate;
+
     private RestTestClient restTestClient;
 
     @BeforeEach
@@ -72,6 +85,7 @@ public class TransactionServiceIntegrationTest {
         // Clean database before each test
         transactionRepository.deleteAll();
         walletBalanceRepository.deleteAll();
+        blockedUserRepository.deleteAll();
     }
 
     // ========== HELPER METHODS ==========
@@ -814,5 +828,67 @@ public class TransactionServiceIntegrationTest {
         assertTrue(firstPage.contains("\"totalPages\":3"));
         assertTrue(firstPage.contains("\"size\":2"));
         assertTrue(firstPage.contains("\"number\":0")); // page number
+    }
+
+    // ========== KAFKA AND BLOCKED USER TESTS ==========
+
+    @Test
+    void shouldAddUserToBlockedListWhenEventIsConsumed() {
+        // Given
+        UserBlockedEvent event = new UserBlockedEvent(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "High risk score",
+                95,
+                Instant.now()
+        );
+
+        // When
+        kafkaTemplate.send("user-blocked", event.userId().toString(), event);
+
+        // Then
+        await().atMost(10, TimeUnit.SECONDS).untilAsserted(() -> {
+            assertTrue(blockedUserRepository.findById(event.userId()).isPresent());
+        });
+    }
+
+    @Test
+    void shouldRejectTransactionForUserBlockedViaEvent() {
+        // Given
+        WalletBalance wallet = setupWalletWithBalance(new BigDecimal("1000.00"));
+        UserBlockedEvent event = new UserBlockedEvent(
+                wallet.getUserId(),
+                UUID.randomUUID(),
+                "End-to-end block test",
+                100,
+                Instant.now()
+        );
+
+        // When - block user via Kafka event
+        kafkaTemplate.send("user-blocked", event.userId().toString(), event);
+
+        // Then - wait for block to be processed and then attempt transaction
+        await().atMost(10, TimeUnit.SECONDS).untilAsserted(() -> {
+            assertTrue(blockedUserRepository.findById(wallet.getUserId()).isPresent());
+        });
+
+        DepositRequest depositRequest = TestDataBuilder.createDepositRequest(
+                wallet.getWalletId(),
+                new BigDecimal("10.00"),
+                "Deposit attempt"
+        );
+
+        ErrorResponse errorResponse = restTestClient.post()
+                .uri("/api/transactions/deposit")
+                .body(depositRequest)
+                .exchange()
+                .expectStatus().isEqualTo(HttpStatus.FORBIDDEN.value())
+                .expectBody(ErrorResponse.class)
+                .returnResult()
+                .getResponseBody();
+
+        assertNotNull(errorResponse);
+        assertEquals(HttpStatus.FORBIDDEN.value(), errorResponse.status());
+        assertTrue(errorResponse.message().contains("is blocked"));
     }
 }

@@ -7,12 +7,10 @@ import com.patorinaldi.wallet.common.event.TransactionFailedEvent;
 import com.patorinaldi.wallet.transaction.dto.*;
 import com.patorinaldi.wallet.transaction.entity.Transaction;
 import com.patorinaldi.wallet.transaction.entity.WalletBalance;
-import com.patorinaldi.wallet.transaction.exception.DuplicateTransactionException;
-import com.patorinaldi.wallet.transaction.exception.InsufficientBalanceException;
-import com.patorinaldi.wallet.transaction.exception.TransactionNotFoundException;
-import com.patorinaldi.wallet.transaction.exception.WalletBalanceNotFoundException;
+import com.patorinaldi.wallet.transaction.exception.*;
 import com.patorinaldi.wallet.transaction.mapper.BalanceMapper;
 import com.patorinaldi.wallet.transaction.mapper.TransactionMapper;
+import com.patorinaldi.wallet.transaction.repository.BlockedUserRepository;
 import com.patorinaldi.wallet.transaction.repository.TransactionRepository;
 import com.patorinaldi.wallet.transaction.repository.WalletBalanceRepository;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +35,7 @@ public class TransactionService {
     private final TransactionPersistenceService persistenceService;
     private final BalanceMapper balanceMapper;
     private final ApplicationEventPublisher eventPublisher;
+    private final BlockedUserRepository blockedUserRepository;
 
     @Transactional
     public TransactionResponse deposit(DepositRequest request) {
@@ -54,6 +53,8 @@ public class TransactionService {
                     log.error("Wallet balance not found: {}", request.walletId());
                     return new WalletBalanceNotFoundException(request.walletId());
                 });
+
+        validateUserNotBlocked(walletBalance.getUserId());
 
         Transaction transaction = Transaction.builder()
                 .amount(request.amount())
@@ -97,6 +98,8 @@ public class TransactionService {
                     log.error("Wallet balance not found: {}", request.walletId());
                     return new WalletBalanceNotFoundException(request.walletId());
                 });
+
+        validateUserNotBlocked(walletBalance.getUserId());
 
         Transaction transaction = Transaction.builder()
                 .amount(request.amount())
@@ -155,6 +158,9 @@ public class TransactionService {
                     log.error("Destination wallet balance not found: {}", request.destinationWalletId());
                     return new WalletBalanceNotFoundException(request.destinationWalletId());
                 });
+
+        validateUserNotBlocked(sourceWalletBalance.getUserId());
+        validateUserNotBlocked(destinationWalletBalance.getUserId());
 
         Transaction transactionOut = Transaction.builder()
                 .amount(request.amount())
@@ -280,4 +286,12 @@ public class TransactionService {
                 .errorReason(transaction.getErrorMessage())
                 .build();
     }
+
+    private void validateUserNotBlocked(UUID userId) {
+        blockedUserRepository.findById(userId).ifPresent(blocked -> {
+            log.warn("Transaction rejected - user {} is blocked: {}", userId, blocked.getReason());
+            throw new UserBlockedException(userId, blocked.getReason());
+        });
+    }
+
 }

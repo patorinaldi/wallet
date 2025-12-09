@@ -4,14 +4,19 @@ import com.patorinaldi.wallet.account.dto.CreateUserRequest;
 import com.patorinaldi.wallet.account.dto.UpdateUserRequest;
 import com.patorinaldi.wallet.account.dto.UserResponse;
 import com.patorinaldi.wallet.account.entity.User;
+import com.patorinaldi.wallet.account.entity.UserBlockLog;
+import com.patorinaldi.wallet.account.entity.UserStatus;
 import com.patorinaldi.wallet.account.exception.EmailAlreadyExistsException;
 import com.patorinaldi.wallet.account.exception.UserAlreadyDeactivatedException;
 import com.patorinaldi.wallet.account.exception.UserNotFoundException;
 import com.patorinaldi.wallet.account.mapper.UserMapper;
+import com.patorinaldi.wallet.account.repository.UserBlockLogRepository;
 import com.patorinaldi.wallet.account.repository.UserRepository;
 import com.patorinaldi.wallet.common.event.UserRegisteredEvent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -37,8 +42,16 @@ public class UserServiceTest {
     private ApplicationEventPublisher eventPublisher;
     @Mock
     private UserMapper userMapper;
+    @Mock
+    private UserBlockLogRepository userBlockLogRepository;
     @InjectMocks
     private UserService userService;
+
+    @Captor
+    private ArgumentCaptor<User> userCaptor;
+
+    @Captor
+    private ArgumentCaptor<UserBlockLog> blockLogCaptor;
 
     @Test
     void createUser_shouldCreateUserAndSendEvent_whenEmailIsNotRegistered() {
@@ -51,7 +64,7 @@ public class UserServiceTest {
                 .phoneNumber("1234567890")
                 .createdAt(Instant.now())
                 .build();
-        UserResponse expectedResponse = new UserResponse(user.getId(), "John Doe", "john.doe@example.com", "1234567890", user.getCreatedAt(), true);
+        UserResponse expectedResponse = new UserResponse(user.getId(), "john.doe@example.com", "John Doe", "1234567890", user.getCreatedAt(), true, UserStatus.ACTIVE, null, null);
 
         when(userRepository.existsByEmail(anyString())).thenReturn(false);
         when(userRepository.saveAndFlush(any(User.class))).thenReturn(user);
@@ -96,7 +109,10 @@ public class UserServiceTest {
                 "John Doe",
                 "1234567890",
                 user.getCreatedAt(),
-                true);
+                true,
+                UserStatus.ACTIVE,
+                null,
+                null);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userMapper.toResponse(user)).thenReturn(expectedResponse);
         // When
@@ -141,7 +157,10 @@ public class UserServiceTest {
                 "John Doe",
                 "1234567890",
                 user.getCreatedAt(),
-                true);
+                true,
+                UserStatus.ACTIVE,
+                null,
+                null);
 
         when(userRepository.findByEmail(email)).thenReturn(Optional.of(user));
         when(userMapper.toResponse(user)).thenReturn(expectedResponse);
@@ -193,7 +212,7 @@ public class UserServiceTest {
                 .active(true)
                 .build();
 
-        UserResponse expectedResponse = new UserResponse(userId, request.email(), request.fullName(), request.phoneNumber(), updatedUser.getCreatedAt(), true);
+        UserResponse expectedResponse = new UserResponse(userId, request.email(), request.fullName(), request.phoneNumber(), updatedUser.getCreatedAt(), true, UserStatus.ACTIVE, null, null);
 
         when(userRepository.findById(userId)).thenReturn(Optional.of(existingUser));
         when(userRepository.existsByEmail(request.email())).thenReturn(false);
@@ -249,7 +268,7 @@ public class UserServiceTest {
         UUID userId = UUID.randomUUID();
         User activeUser = User.builder().id(userId).active(true).build();
         User deactivatedUser = User.builder().id(userId).active(false).build();
-        UserResponse expectedResponse = new UserResponse(userId, null, null, null, null, false);
+        UserResponse expectedResponse = new UserResponse(userId, null, null, null, null, false, UserStatus.ACTIVE, null, null);
 
         when(userRepository.findById(userId)).thenReturn(Optional.of(activeUser));
         when(userRepository.save(any(User.class))).thenReturn(deactivatedUser);
@@ -284,5 +303,79 @@ public class UserServiceTest {
 
         // When & Then
         assertThrows(UserAlreadyDeactivatedException.class, () -> userService.deactivateUser(userId));
+    }
+
+    @Test
+    void blockUser_shouldUpdateUserStatusAndCreateLog_whenUserExists() {
+        // Given
+        UUID userId = UUID.randomUUID();
+        UUID transactionId = UUID.randomUUID();
+        String reason = "High risk score";
+        int riskScore = 95;
+        Instant blockedAt = Instant.now();
+
+        User existingUser = User.builder()
+                .id(userId)
+                .status(UserStatus.ACTIVE)
+                .build();
+
+        when(userBlockLogRepository.existsByTriggeredByTransactionId(transactionId)).thenReturn(false);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(existingUser));
+
+        // When
+        userService.blockUser(userId, transactionId, reason, riskScore, blockedAt);
+
+        // Then
+        verify(userRepository).save(userCaptor.capture());
+        verify(userBlockLogRepository).save(blockLogCaptor.capture());
+
+        User savedUser = userCaptor.getValue();
+        assertEquals(UserStatus.BLOCKED, savedUser.getStatus());
+        assertEquals(reason, savedUser.getBlockReason());
+        assertEquals(blockedAt, savedUser.getBlockedAt());
+        assertEquals(transactionId, savedUser.getBlockedByTransactionId());
+
+        UserBlockLog savedLog = blockLogCaptor.getValue();
+        assertEquals(userId, savedLog.getUserId());
+        assertEquals(transactionId, savedLog.getTriggeredByTransactionId());
+        assertEquals(reason, savedLog.getReason());
+        assertEquals(riskScore, savedLog.getRiskScore());
+    }
+
+    @Test
+    void blockUser_shouldThrowException_whenUserNotFound() {
+        // Given
+        UUID userId = UUID.randomUUID();
+        UUID transactionId = UUID.randomUUID();
+
+        when(userBlockLogRepository.existsByTriggeredByTransactionId(transactionId)).thenReturn(false);
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+        // When & Then
+        assertThrows(UserNotFoundException.class, () -> {
+            userService.blockUser(userId, transactionId, "reason", 100, Instant.now());
+        });
+
+        // Then
+        verify(userBlockLogRepository).existsByTriggeredByTransactionId(transactionId);
+        verify(userRepository).findById(userId);
+        verify(userRepository, never()).save(any(User.class));
+        verify(userBlockLogRepository, never()).save(any(UserBlockLog.class));
+    }
+
+    @Test
+    void blockUser_shouldSkip_whenBlockLogAlreadyExists() {
+        // Given
+        UUID transactionId = UUID.randomUUID();
+        when(userBlockLogRepository.existsByTriggeredByTransactionId(transactionId)).thenReturn(true);
+
+        // When
+        userService.blockUser(UUID.randomUUID(), transactionId, "reason", 100, Instant.now());
+
+        // Then
+        verify(userBlockLogRepository).existsByTriggeredByTransactionId(transactionId);
+        verify(userRepository, never()).findById(any());
+        verify(userRepository, never()).save(any());
+        verify(userBlockLogRepository, never()).save(any());
     }
 }

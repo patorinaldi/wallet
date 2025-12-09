@@ -1,11 +1,15 @@
 package com.patorinaldi.wallet.account.service;
 
 import com.patorinaldi.wallet.account.dto.UpdateUserRequest;
+import com.patorinaldi.wallet.account.dto.UserStatusResponse;
 import com.patorinaldi.wallet.account.entity.User;
+import com.patorinaldi.wallet.account.entity.UserBlockLog;
+import com.patorinaldi.wallet.account.entity.UserStatus;
 import com.patorinaldi.wallet.account.exception.EmailAlreadyExistsException;
 import com.patorinaldi.wallet.account.exception.UserAlreadyDeactivatedException;
 import com.patorinaldi.wallet.account.exception.UserNotFoundException;
 import com.patorinaldi.wallet.account.mapper.UserMapper;
+import com.patorinaldi.wallet.account.repository.UserBlockLogRepository;
 import com.patorinaldi.wallet.account.repository.UserRepository;
 import com.patorinaldi.wallet.common.event.UserRegisteredEvent;
 import com.patorinaldi.wallet.account.dto.UserResponse;
@@ -15,6 +19,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.context.ApplicationEventPublisher;
+
+import java.time.Instant;
 import java.util.UUID;
 
 
@@ -26,6 +32,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final UserMapper userMapper;
+    private final UserBlockLogRepository userBlockLogRepository;
 
     @Transactional
     public UserResponse createUser(CreateUserRequest createUserRequest) {
@@ -132,5 +139,48 @@ public class UserService {
         log.info("User deactivated successfully: {}", id);
 
         return userMapper.toResponse(userRepository.save(user));
+    }
+
+    @Transactional
+    public void blockUser(UUID userId, UUID triggeredByTransactionId,
+                          String reason, Integer riskScore, Instant blockedAt) {
+        log.warn("Blocking user {} due to fraud. Transaction: {}, Risk: {}",
+                userId, triggeredByTransactionId, riskScore);
+
+        if (userBlockLogRepository.existsByTriggeredByTransactionId(triggeredByTransactionId)) {
+            log.info("Block event for transaction {} already processed", triggeredByTransactionId);
+            return;
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException(userId));
+
+        user.setStatus(UserStatus.BLOCKED);
+        user.setBlockedAt(blockedAt);
+        user.setBlockReason(reason);
+        user.setBlockedByTransactionId(triggeredByTransactionId);
+        userRepository.save(user);
+
+        UserBlockLog userBlockLog = UserBlockLog.builder()
+                .userId(userId)
+                .triggeredByTransactionId(triggeredByTransactionId)
+                .reason(reason)
+                .riskScore(riskScore)
+                .blockedAt(blockedAt)
+                .build();
+        userBlockLogRepository.save(userBlockLog);
+
+        log.warn("User {} blocked successfully", userId);
+    }
+
+
+    public UserStatusResponse getUserStatus(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException(userId));
+
+        return new UserStatusResponse(
+                userId,
+                user.getStatus()
+                );
     }
 }

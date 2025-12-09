@@ -7,13 +7,16 @@ import com.patorinaldi.wallet.common.event.TransactionFailedEvent;
 import com.patorinaldi.wallet.transaction.dto.*;
 import com.patorinaldi.wallet.transaction.entity.Transaction;
 import com.patorinaldi.wallet.transaction.entity.WalletBalance;
+import com.patorinaldi.wallet.transaction.entity.BlockedUser;
 import com.patorinaldi.wallet.transaction.exception.DuplicateTransactionException;
 import com.patorinaldi.wallet.transaction.exception.InsufficientBalanceException;
 import com.patorinaldi.wallet.transaction.exception.TransactionNotFoundException;
+import com.patorinaldi.wallet.transaction.exception.UserBlockedException;
 import com.patorinaldi.wallet.transaction.exception.WalletBalanceNotFoundException;
 import com.patorinaldi.wallet.transaction.helper.TestDataBuilder;
 import com.patorinaldi.wallet.transaction.mapper.BalanceMapper;
 import com.patorinaldi.wallet.transaction.mapper.TransactionMapper;
+import com.patorinaldi.wallet.transaction.repository.BlockedUserRepository;
 import com.patorinaldi.wallet.transaction.repository.TransactionRepository;
 import com.patorinaldi.wallet.transaction.repository.WalletBalanceRepository;
 import org.junit.jupiter.api.Test;
@@ -57,6 +60,9 @@ class TransactionServiceTest {
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
+
+    @Mock
+    private BlockedUserRepository blockedUserRepository;
 
     @InjectMocks
     private TransactionService transactionService;
@@ -474,5 +480,110 @@ class TransactionServiceTest {
 
         verify(walletBalanceRepository).findByWalletId(walletId);
         verify(balanceMapper, never()).toResponse(any());
+    }
+
+    // ========== BLOCKED USER TESTS ==========
+
+    @Test
+    void deposit_shouldThrowUserBlockedException_whenUserIsBlocked() {
+        // Given
+        UUID walletId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        WalletBalance walletBalance = TestDataBuilder.createWalletBalance(walletId, userId, new BigDecimal("100.00"), "USD");
+        DepositRequest request = TestDataBuilder.createDepositRequest(walletId, new BigDecimal("50.00"), "Test");
+        BlockedUser blocked = BlockedUser.builder().userId(userId).reason("Fraud detected").build();
+
+        when(transactionRepository.existsByIdempotencyKey(request.idempotencyKey())).thenReturn(false);
+        when(walletBalanceRepository.findByWalletId(walletId)).thenReturn(Optional.of(walletBalance));
+        when(blockedUserRepository.findById(userId)).thenReturn(Optional.of(blocked));
+
+        // When & Then
+        UserBlockedException ex = assertThrows(UserBlockedException.class,
+                () -> transactionService.deposit(request));
+
+        assertTrue(ex.getMessage().contains("blocked"));
+        verify(transactionRepository, never()).save(any());
+        verify(walletBalanceRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void withdrawal_shouldThrowUserBlockedException_whenUserIsBlocked() {
+        // Given
+        UUID walletId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        WalletBalance walletBalance = TestDataBuilder.createWalletBalance(walletId, userId, new BigDecimal("100.00"), "USD");
+        WithdrawalRequest request = TestDataBuilder.createWithdrawalRequest(walletId, new BigDecimal("30.00"), "Test");
+        BlockedUser blocked = BlockedUser.builder().userId(userId).reason("Fraud detected").build();
+
+        when(transactionRepository.existsByIdempotencyKey(request.idempotencyKey())).thenReturn(false);
+        when(walletBalanceRepository.findByWalletId(walletId)).thenReturn(Optional.of(walletBalance));
+        when(blockedUserRepository.findById(userId)).thenReturn(Optional.of(blocked));
+
+        // When & Then
+        UserBlockedException ex = assertThrows(UserBlockedException.class,
+                () -> transactionService.withdrawal(request));
+
+        assertTrue(ex.getMessage().contains("blocked"));
+        verify(transactionRepository, never()).save(any());
+        verify(walletBalanceRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void transfer_shouldThrowUserBlockedException_whenSourceUserIsBlocked() {
+        // Given
+        UUID sourceWalletId = UUID.randomUUID();
+        UUID destWalletId = UUID.randomUUID();
+        UUID sourceUserId = UUID.randomUUID();
+        UUID destUserId = UUID.randomUUID();
+
+        WalletBalance sourceWallet = TestDataBuilder.createWalletBalance(sourceWalletId, sourceUserId, new BigDecimal("200.00"), "USD");
+        WalletBalance destWallet = TestDataBuilder.createWalletBalance(destWalletId, destUserId, new BigDecimal("50.00"), "USD");
+        TransferRequest request = TestDataBuilder.createTransferRequest(sourceWalletId, destWalletId, new BigDecimal("75.00"), "Test");
+        BlockedUser blocked = BlockedUser.builder().userId(sourceUserId).reason("Fraud detected").build();
+
+        when(transactionRepository.existsByIdempotencyKey(anyString())).thenReturn(false);
+        when(walletBalanceRepository.findByWalletId(sourceWalletId)).thenReturn(Optional.of(sourceWallet));
+        when(walletBalanceRepository.findByWalletId(destWalletId)).thenReturn(Optional.of(destWallet));
+        when(blockedUserRepository.findById(sourceUserId)).thenReturn(Optional.of(blocked));
+
+        // When & Then
+        UserBlockedException ex = assertThrows(UserBlockedException.class,
+                () -> transactionService.transfer(request));
+
+        assertTrue(ex.getMessage().contains("blocked"));
+        verify(transactionRepository, never()).save(any());
+        verify(walletBalanceRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void transfer_shouldThrowUserBlockedException_whenDestinationUserIsBlocked() {
+        // Given
+        UUID sourceWalletId = UUID.randomUUID();
+        UUID destWalletId = UUID.randomUUID();
+        UUID sourceUserId = UUID.randomUUID();
+        UUID destUserId = UUID.randomUUID();
+
+        WalletBalance sourceWallet = TestDataBuilder.createWalletBalance(sourceWalletId, sourceUserId, new BigDecimal("200.00"), "USD");
+        WalletBalance destWallet = TestDataBuilder.createWalletBalance(destWalletId, destUserId, new BigDecimal("50.00"), "USD");
+        TransferRequest request = TestDataBuilder.createTransferRequest(sourceWalletId, destWalletId, new BigDecimal("75.00"), "Test");
+        BlockedUser blocked = BlockedUser.builder().userId(destUserId).reason("Fraud detected").build();
+
+        when(transactionRepository.existsByIdempotencyKey(anyString())).thenReturn(false);
+        when(walletBalanceRepository.findByWalletId(sourceWalletId)).thenReturn(Optional.of(sourceWallet));
+        when(walletBalanceRepository.findByWalletId(destWalletId)).thenReturn(Optional.of(destWallet));
+        when(blockedUserRepository.findById(sourceUserId)).thenReturn(Optional.empty());
+        when(blockedUserRepository.findById(destUserId)).thenReturn(Optional.of(blocked));
+
+        // When & Then
+        UserBlockedException ex = assertThrows(UserBlockedException.class,
+                () -> transactionService.transfer(request));
+
+        assertTrue(ex.getMessage().contains("blocked"));
+        verify(transactionRepository, never()).save(any());
+        verify(walletBalanceRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any());
     }
 }

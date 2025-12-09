@@ -3,11 +3,13 @@ package com.patorinaldi.wallet.account.controller;
 import com.patorinaldi.wallet.account.dto.CreateUserRequest;
 import com.patorinaldi.wallet.account.dto.UpdateUserRequest;
 import com.patorinaldi.wallet.account.dto.UserResponse;
+import com.patorinaldi.wallet.account.dto.UserStatusResponse;
 import com.patorinaldi.wallet.account.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -54,4 +56,9 @@ public class UserController {
         return userService.deactivateUser(id);
     }
 
+    @GetMapping("/users/{id}/status")
+    public ResponseEntity<UserStatusResponse> getUserStatus(@PathVariable UUID id) {
+        log.debug("GET /users/{}/status - Fetching user status", id);
+        return ResponseEntity.ok(userService.getUserStatus(id));
+    }
 }

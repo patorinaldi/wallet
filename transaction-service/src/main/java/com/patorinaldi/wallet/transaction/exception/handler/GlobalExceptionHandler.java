@@ -1,10 +1,7 @@
 package com.patorinaldi.wallet.transaction.exception.handler;
 
 import com.patorinaldi.wallet.transaction.dto.ErrorResponse;
-import com.patorinaldi.wallet.transaction.exception.DuplicateTransactionException;
-import com.patorinaldi.wallet.transaction.exception.InsufficientBalanceException;
-import com.patorinaldi.wallet.transaction.exception.TransactionNotFoundException;
-import com.patorinaldi.wallet.transaction.exception.WalletBalanceNotFoundException;
+import com.patorinaldi.wallet.transaction.exception.*;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -63,5 +60,21 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+    }
+
+    @ExceptionHandler(UserBlockedException.class)
+    public ResponseEntity<ErrorResponse> handleUserBlocked(
+            UserBlockedException ex,
+            HttpServletRequest request) {
+
+        ErrorResponse response = new ErrorResponse(
+                LocalDateTime.now(),
+                403,
+                "Forbidden",
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
     }
 }

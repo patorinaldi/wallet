@@ -48,8 +48,18 @@ public class User {
     @Column(name = "updated_at")
     private Instant updatedAt;
 
-    public void addWallet(Wallet wallet) {
-        wallets.add(wallet);
-        wallet.setUser(this);
-    }
+    @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    private UserStatus status = UserStatus.ACTIVE;
+
+    @Column(name = "blocked_at")
+    private Instant blockedAt;
+
+    @Column(name = "block_reason")
+    private String blockReason;
+
+    @Column(name = "blocked_by_transaction_id")
+    private UUID blockedByTransactionId;
+
 }
