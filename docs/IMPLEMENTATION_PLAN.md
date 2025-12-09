@@ -1,8 +1,8 @@
 _# Wallet Microservices - Revised Implementation Plan
 
-> **Version:** 3.0
-> **Last Updated:** 2025-12-07
-> **Status:** Phase 0 & 1 Complete - Ready for Phase 2 (Fraud Service)
+> **Version:** 4.0
+> **Last Updated:** 2025-12-09
+> **Status:** Phase 0, 1 & 2 Complete - Ready for Phase 3 (Notification Service)
 
 ---
 
@@ -51,8 +51,34 @@ This revised plan addresses critical architectural concerns raised during review
 - Idempotency framework (IdempotencyChecker, ProcessedEvent, ProcessingOutcome)
 - Kafka error handling configuration (KafkaErrorConfig)
 
-### 🔲 Phase 2: Fraud Analysis Service (NOT STARTED)
-- Stub application exists, no business logic implemented
+### ✅ Phase 2: Fraud Analysis Service (COMPLETE)
+
+**Fraud Service (Port 8085):**
+- Rule-based fraud analysis with configurable rules (amount threshold, velocity, new account, unusual pattern)
+- FraudAnalysis entity with risk scoring (0-100) and decisions (APPROVE, FLAG, BLOCK)
+- FraudRule entity for configurable rule management with score impacts
+- FraudTransactionHistory for velocity and pattern detection
+- Event consumption: `transaction-completed` → analyzes and stores fraud analysis
+- Event publishing: `fraud-alert` for FLAG/BLOCK decisions, `user-blocked` for BLOCK decisions
+- Idempotency via transactionId uniqueness
+- Comprehensive unit and integration tests with TestContainers
+
+**Account Service Enhancements:**
+- User status tracking (ACTIVE, BLOCKED, SUSPENDED, PENDING_VERIFICATION)
+- UserBlockLog entity for audit trail of block events
+- UserBlockedEventListener consuming `user-blocked` → updates user status
+- GET /users/{id}/status endpoint for status checks
+- GlobalExceptionHandler for UserBlockedException (403 Forbidden)
+
+**Transaction Service Enhancements:**
+- BlockedUser entity for local blocked user cache
+- UserBlockedEventListener consuming `user-blocked` → caches blocked users
+- Pre-transaction validation: rejects transactions from blocked users with 403 Forbidden
+- Validates both source and destination users in transfers
+
+**Common Module:**
+- FraudAlertEvent DTO (analysisId, transactionId, riskScore, decision)
+- UserBlockedEvent DTO (userId, triggeredByTransactionId, reason, riskScore, blockedAt)
 
 ### 🔲 Phase 3: Notification Service (NOT STARTED)
 - Stub application exists, no business logic implemented
@@ -1075,16 +1101,16 @@ class FraudBlockFeedbackLoopTest {
 ---
 
 **Deliverables:**
-- [ ] FraudAnalysis entity with idempotency
-- [ ] Rule-based scoring engine
-- [ ] Transaction history queries for velocity checks
-- [ ] FraudAlertEvent publishing
-- [ ] UserBlockedEvent publishing for BLOCK decisions
-- [ ] account-service listener for UserBlockedEvent
-- [ ] User status check in transaction-service before processing
-- [ ] Integration tests for each rule
-- [ ] Integration test for feedback loop
-- [ ] Admin API for rule management (optional)
+- [x] FraudAnalysis entity with idempotency
+- [x] Rule-based scoring engine (4 rule types: AMOUNT_THRESHOLD, VELOCITY, NEW_ACCOUNT, UNUSUAL_PATTERN)
+- [x] Transaction history queries for velocity checks (FraudTransactionHistoryService)
+- [x] FraudAlertEvent publishing (for FLAG and BLOCK decisions)
+- [x] UserBlockedEvent publishing for BLOCK decisions
+- [x] account-service listener for UserBlockedEvent (UserBlockedEventListener)
+- [x] User status check in transaction-service before processing (validateUserNotBlocked)
+- [x] Integration tests for each rule (FraudAnalysisServiceIntegrationTest)
+- [x] Integration test for feedback loop (end-to-end Kafka flow)
+- [ ] Admin API for rule management (deferred to future phase)
 
 ---
 
@@ -1229,7 +1255,7 @@ spring:
 | transaction-service | ✅ Done | ✅ Done | Planned |
 | ledger-service | ✅ Done | ✅ Done | Planned |
 | notification-service | Planned | Planned (GreenMail) | Planned |
-| fraud-service | Planned | Planned | Planned |
+| fraud-service | ✅ Done | ✅ Done | Planned |
 
 ---
 
@@ -1273,6 +1299,36 @@ spring:
 ---
 
 ## Appendix C: Changelog
+
+### Version 4.0 (2025-12-09)
+**Phase 2 Complete - Fraud Detection & User Blocking**
+
+- **Fraud Service Implementation:**
+  - Rule-based fraud analysis with 4 configurable rule types (AMOUNT_THRESHOLD, VELOCITY, NEW_ACCOUNT, UNUSUAL_PATTERN)
+  - FraudAnalysis entity with risk scoring (0-100) and decisions (APPROVE, FLAG, BLOCK)
+  - FraudRule entity for dynamic rule configuration with score impacts
+  - FraudTransactionHistory for velocity and pattern detection
+  - TransactionEventListener consuming `transaction-completed` events
+  - KafkaEventPublisher for `fraud-alert` and `user-blocked` events
+  - FraudRuleSeeder for initial rule configuration
+  - Comprehensive test coverage (unit + integration with TestContainers)
+
+- **Account Service Enhancements:**
+  - User entity extended with status (ACTIVE, BLOCKED, SUSPENDED, PENDING_VERIFICATION)
+  - UserBlockLog entity for audit trail of all block events
+  - UserBlockedEventListener consuming `user-blocked` → updates user status
+  - GET /users/{id}/status endpoint for external status checks
+  - GlobalExceptionHandler updated for UserBlockedException (403 Forbidden)
+
+- **Transaction Service Enhancements:**
+  - BlockedUser entity for local cached blocked user list
+  - UserBlockedEventListener consuming `user-blocked` → caches blocked users locally
+  - validateUserNotBlocked() check before deposit, withdrawal, and transfer operations
+  - Returns 403 Forbidden for transactions from blocked users
+
+- **Common Module:**
+  - FraudAlertEvent record (analysisId, transactionId, riskScore, decision)
+  - UserBlockedEvent record (userId, triggeredByTransactionId, reason, riskScore, blockedAt)
 
 ### Version 3.0 (2025-12-07)
 **Phase 0 & 1 Complete**
