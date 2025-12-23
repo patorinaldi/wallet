@@ -1,8 +1,8 @@
 _# Wallet Microservices - Revised Implementation Plan
 
-> **Version:** 4.0
-> **Last Updated:** 2025-12-09
-> **Status:** Phase 0, 1 & 2 Complete - Ready for Phase 3 (Notification Service)
+> **Version:** 4.1
+> **Last Updated:** 2025-12-22
+> **Status:** Phase 0, 1 & 2 Complete - Ready for Phase 3 (Observability & Notification)
 
 ---
 
@@ -1185,6 +1185,273 @@ grafana:
 
 ---
 
+### 3.3 Logging Infrastructure & Standardization
+
+**Why Now:** Proper logging is essential for debugging distributed systems. MDC correlation ties logs to Zipkin traces, and structured logging enables log aggregation tools (ELK, Loki). Currently, the project lacks:
+- Explicit logging configuration (relies on Spring Boot defaults)
+- MDC/Correlation IDs for cross-service tracing
+- Logging in global exception handlers
+- Kafka error/DLT visibility
+
+#### 3.3.1 Logback Configuration (All Services)
+
+Create `logback-spring.xml` in each service's `src/main/resources/`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <springProperty scope="context" name="SERVICE_NAME" source="spring.application.name"/>
+
+    <!-- Console Appender with MDC fields for correlation -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [${SERVICE_NAME}] [%X{traceId:-}] [%X{spanId:-}] [%X{correlationId:-}] [%-5level] %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Async appender for performance under load -->
+    <appender name="ASYNC" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="CONSOLE"/>
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>true</neverBlock>
+    </appender>
+
+    <!-- Root logger -->
+    <root level="INFO">
+        <appender-ref ref="ASYNC"/>
+    </root>
+
+    <!-- Application-specific logging -->
+    <logger name="com.patorinaldi.wallet" level="DEBUG"/>
+
+    <!-- Reduce noise from frameworks -->
+    <logger name="org.springframework.kafka" level="WARN"/>
+    <logger name="org.apache.kafka" level="WARN"/>
+    <logger name="org.hibernate.SQL" level="WARN"/>
+    <logger name="org.springframework.web" level="INFO"/>
+</configuration>
+```
+
+#### 3.3.2 MDC Correlation Filter (common module)
+
+Create a filter to propagate correlation IDs across HTTP requests:
+
+```java
+// common/src/main/java/com/wallet/common/logging/CorrelationIdFilter.java
+@Component
+@Order(Ordered.HIGHEST_PRECEDENCE)
+@Slf4j
+public class CorrelationIdFilter extends OncePerRequestFilter {
+
+    public static final String CORRELATION_ID_HEADER = "X-Correlation-ID";
+    public static final String CORRELATION_ID_MDC_KEY = "correlationId";
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    FilterChain chain) throws ServletException, IOException {
+        try {
+            String correlationId = request.getHeader(CORRELATION_ID_HEADER);
+            if (correlationId == null || correlationId.isBlank()) {
+                correlationId = UUID.randomUUID().toString();
+            }
+            MDC.put(CORRELATION_ID_MDC_KEY, correlationId);
+            response.setHeader(CORRELATION_ID_HEADER, correlationId);
+
+            log.debug("Processing request {} {} with correlationId={}",
+                request.getMethod(), request.getRequestURI(), correlationId);
+
+            chain.doFilter(request, response);
+        } finally {
+            MDC.remove(CORRELATION_ID_MDC_KEY);
+        }
+    }
+}
+```
+
+#### 3.3.3 MDC Propagation in Kafka Listeners
+
+Create a decorator for Kafka listeners to propagate MDC context:
+
+```java
+// common/src/main/java/com/wallet/common/logging/KafkaMdcDecorator.java
+@Component
+public class KafkaMdcDecorator {
+
+    public static final String TRANSACTION_ID_MDC_KEY = "transactionId";
+    public static final String USER_ID_MDC_KEY = "userId";
+
+    public static void withMdc(UUID transactionId, UUID userId, Runnable action) {
+        try {
+            if (transactionId != null) {
+                MDC.put(TRANSACTION_ID_MDC_KEY, transactionId.toString());
+            }
+            if (userId != null) {
+                MDC.put(USER_ID_MDC_KEY, userId.toString());
+            }
+            action.run();
+        } finally {
+            MDC.remove(TRANSACTION_ID_MDC_KEY);
+            MDC.remove(USER_ID_MDC_KEY);
+        }
+    }
+}
+```
+
+Usage in listeners:
+```java
+@KafkaListener(topics = "transaction-completed", groupId = "ledger-service")
+public void handleTransactionCompleted(TransactionCompletedEvent event) {
+    KafkaMdcDecorator.withMdc(event.transactionId(), event.userId(), () -> {
+        log.info("Processing transaction-completed event");
+        ledgerService.processTransaction(event);
+    });
+}
+```
+
+#### 3.3.4 Exception Handler Logging
+
+Add logging to all `GlobalExceptionHandler` classes:
+
+```java
+// Add @Slf4j annotation to GlobalExceptionHandler classes
+
+// For client errors (4xx) - WARN level
+@ExceptionHandler({
+    EmailAlreadyExistsException.class,
+    WalletAlreadyExistsException.class,
+    DuplicateTransactionException.class
+})
+public ResponseEntity<ErrorResponse> handleConflict(RuntimeException ex, HttpServletRequest request) {
+    log.warn("Conflict error for {} {}: {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
+    // ... existing response logic
+}
+
+// For not found errors - WARN level
+@ExceptionHandler(EntityNotFoundException.class)
+public ResponseEntity<ErrorResponse> handleNotFound(EntityNotFoundException ex, HttpServletRequest request) {
+    log.warn("Resource not found for {} {}: {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
+    // ... existing response logic
+}
+
+// For validation errors - WARN level
+@ExceptionHandler(MethodArgumentNotValidException.class)
+public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex, HttpServletRequest request) {
+    log.warn("Validation error for {} {}: {}", request.getMethod(), request.getRequestURI(),
+        ex.getBindingResult().getAllErrors());
+    // ... existing response logic
+}
+
+// For unexpected errors (5xx) - ERROR level with stack trace
+@ExceptionHandler(Exception.class)
+public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex, HttpServletRequest request) {
+    log.error("Unexpected error for {} {}: {}", request.getMethod(), request.getRequestURI(), ex.getMessage(), ex);
+    // ... existing response logic
+}
+```
+
+#### 3.3.5 Kafka Error Handler Logging
+
+Enhance `KafkaErrorConfig` in common module with retry and DLT logging:
+
+```java
+// common/src/main/java/com/wallet/common/kafka/KafkaErrorConfig.java
+@Configuration
+@Slf4j
+public class KafkaErrorConfig {
+
+    @Bean
+    public DefaultErrorHandler errorHandler(KafkaTemplate<String, Object> kafkaTemplate) {
+        // DLT recoverer with logging
+        DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
+            kafkaTemplate,
+            (record, ex) -> {
+                log.error("Sending message to DLT. Topic: {}, Key: {}, Error: {}",
+                    record.topic(), record.key(), ex.getMessage());
+                return new TopicPartition(record.topic() + ".DLT", record.partition());
+            }
+        );
+
+        ExponentialBackOff backOff = new ExponentialBackOff(1000L, 2.0);
+        backOff.setMaxElapsedTime(10000L);
+
+        DefaultErrorHandler handler = new DefaultErrorHandler(recoverer, backOff);
+
+        // Add retry listener for visibility
+        handler.setRetryListeners((record, ex, deliveryAttempt) ->
+            log.warn("Kafka retry attempt {} for topic={}, partition={}, offset={}, key={}: {}",
+                deliveryAttempt,
+                record.topic(),
+                record.partition(),
+                record.offset(),
+                record.key(),
+                ex.getMessage())
+        );
+
+        handler.addNotRetryableExceptions(
+            DeserializationException.class,
+            MessageConversionException.class,
+            ValidationException.class
+        );
+
+        return handler;
+    }
+}
+```
+
+#### 3.3.6 Sensitive Data Masking Utility
+
+```java
+// common/src/main/java/com/wallet/common/logging/LogMasker.java
+public final class LogMasker {
+
+    private LogMasker() {}
+
+    /**
+     * Masks email address: john.doe@example.com -> j***@example.com
+     */
+    public static String maskEmail(String email) {
+        if (email == null || !email.contains("@")) {
+            return "***";
+        }
+        int atIndex = email.indexOf('@');
+        if (atIndex <= 1) {
+            return "***" + email.substring(atIndex);
+        }
+        return email.charAt(0) + "***" + email.substring(atIndex);
+    }
+
+    /**
+     * Masks UUID: shows first 8 chars only: 550e8400-e29b-41d4-a716-446655440000 -> 550e8400-***
+     */
+    public static String maskUuid(UUID uuid) {
+        if (uuid == null) {
+            return "***";
+        }
+        String str = uuid.toString();
+        return str.substring(0, 8) + "-***";
+    }
+}
+```
+
+Usage:
+```java
+log.info("Creating user with email: {}", LogMasker.maskEmail(request.email()));
+```
+
+**Deliverables:**
+- [ ] `logback-spring.xml` for all services (account, transaction, ledger, fraud, notification)
+- [ ] `CorrelationIdFilter` in common module for HTTP request correlation
+- [ ] `KafkaMdcDecorator` in common module for Kafka listener MDC propagation
+- [ ] Update all `GlobalExceptionHandler` classes with appropriate logging
+- [ ] Enhance `KafkaErrorConfig` with retry and DLT logging
+- [ ] `LogMasker` utility in common module for sensitive data
+- [ ] Update existing log statements to use MDC context where appropriate
+- [ ] Test logging output in integration tests
+
+---
+
 ## Phase 4: Production Hardening (Future)
 
 ### 4.1 Sync Fraud Checks (Optional Enhancement)
@@ -1269,6 +1536,9 @@ spring:
 | Fraud after-the-fact only | Accepted | Medium | Document as "Analysis Service", Phase 5 for sync |
 | Schema evolution breaks consumers | Medium | High | Version events, backward compatibility policy |
 | Debugging across services | High (without tracing) | High | Implement tracing in Phase 0 |
+| Silent exceptions at HTTP boundary | High (current state) | Medium | Add logging to GlobalExceptionHandler (Phase 3.3) |
+| Kafka DLT messages untracked | Medium (current state) | Medium | Add DLT logging in KafkaErrorConfig (Phase 3.3) |
+| Log correlation across services | High (current state) | High | MDC + CorrelationIdFilter (Phase 3.3) |
 
 ---
 
@@ -1299,6 +1569,23 @@ spring:
 ---
 
 ## Appendix C: Changelog
+
+### Version 4.1 (2025-12-22)
+**Phase 3 Planning - Logging Infrastructure Added**
+
+- **New Section 3.3: Logging Infrastructure & Standardization:**
+  - Added `logback-spring.xml` configuration template for all services
+  - Added `CorrelationIdFilter` for HTTP request correlation IDs
+  - Added `KafkaMdcDecorator` for Kafka listener MDC propagation
+  - Added exception handler logging guidelines (WARN for 4xx, ERROR for 5xx)
+  - Enhanced `KafkaErrorConfig` with retry and DLT logging
+  - Added `LogMasker` utility for sensitive data masking
+  - 8 new deliverables added to Phase 3
+
+- **Risk Register Updates:**
+  - Added "Silent exceptions at HTTP boundary" risk with Phase 3.3 mitigation
+  - Added "Kafka DLT messages untracked" risk with Phase 3.3 mitigation
+  - Added "Log correlation across services" risk with Phase 3.3 mitigation
 
 ### Version 4.0 (2025-12-09)
 **Phase 2 Complete - Fraud Detection & User Blocking**
