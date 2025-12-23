@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Transaction Receipt</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background-color: #4CAF50; color: white; padding: 20px; text-align: center;">
+        <h1>Transaction Successful</h1>
+    </div>
+
+    <div style="padding: 20px; background-color: #f9f9f9;">
+        <p>Hello <span th:text="${user.fullName}">User</span>,</p>
+
+        <p>Your transaction has been completed successfully.</p>
+
+        <div style="background-color: white; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <h3 style="margin-top: 0;">Transaction Details</h3>
+            <p><strong>Type:</strong> <span th:text="${event.type()}">DEPOSIT</span></p>
+            <p><strong>Amount:</strong> <span th:text="${event.currency()}">USD</span> <span th:text="${#numbers.formatDecimal(event.amount(), 1, 2)}">0.00</span></p>
+            <p><strong>Balance After:</strong> <span th:text="${event.currency()}">USD</span> <span th:text="${#numbers.formatDecimal(event.balanceAfter(), 1, 2)}">0.00</span></p>
+            <p><strong>Transaction ID:</strong> <span th:text="${event.transactionId()}">ID</span></p>
+            <p><strong>Date:</strong> <span th:text="${#temporals.format(event.completedAt(), 'MMMM dd, yyyy HH:mm')}">Date</span></p>
+            <p th:if="${event.description() != null}"><strong>Description:</strong> <span th:text="${event.description()}">Description</span></p>
+        </div>
+
+        <p>Thank you for using Wallet!</p>
+
+        <p>Best regards,<br>The Wallet Team</p>
+    </div>
+
+    <div style="text-align: center; padding: 20px; color: #666; font-size: 12px;">
+        <p>This is an automated message. Please do not reply to this email.</p>
+    </div>
+</body>
+</html>

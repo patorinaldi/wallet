@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>New Wallet Created</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background-color: #2196F3; color: white; padding: 20px; text-align: center;">
+        <h1>New Wallet Created</h1>
+    </div>
+
+    <div style="padding: 20px; background-color: #f9f9f9;">
+        <p>Hello <span th:text="${user.fullName}">User</span>,</p>
+
+        <p>A new wallet has been created for your account.</p>
+
+        <div style="background-color: white; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <h3 style="margin-top: 0;">Wallet Details</h3>
+            <p><strong>Currency:</strong> <span th:text="${event.currency()}">USD</span></p>
+            <p><strong>Wallet ID:</strong> <span th:text="${event.walletId()}">ID</span></p>
+            <p><strong>Created:</strong> <span th:text="${#temporals.format(event.createdAt(), 'MMMM dd, yyyy HH:mm')}">Date</span></p>
+        </div>
+
+        <p>You can now deposit funds and make transactions with this wallet.</p>
+
+        <p>Best regards,<br>The Wallet Team</p>
+    </div>
+
+    <div style="text-align: center; padding: 20px; color: #666; font-size: 12px;">
+        <p>This is an automated message. Please do not reply to this email.</p>
+    </div>
+</body>
+</html>

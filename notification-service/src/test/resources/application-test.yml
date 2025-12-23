@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: notification-service-test
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+
+  thymeleaf:
+    prefix: classpath:/templates/
+    suffix: .html
+    mode: HTML
+    cache: false
+
+  mail:
+    host: localhost
+    port: 3025
+    properties:
+      mail.smtp.auth: false
+      mail.smtp.starttls.enable: false
+
+notification:
+  admin-email: admin@wallet.com
+  from-email: noreply@wallet.com
+  from-name: Wallet Notifications
+
+management:
+  tracing:
+    sampling:
+      probability: 0.0

@@ -6,6 +6,20 @@ spring:
     compose:
       enabled: false
 
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:5432/wallet_db
+    username: ${DB_USERNAME:wallet}
+    password: ${DB_PASSWORD:wallet123}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
     consumer:
@@ -16,9 +30,18 @@ spring:
       properties:
         spring.json.trusted.packages: com.patorinaldi.wallet.*
 
+  thymeleaf:
+    prefix: classpath:/templates/
+    suffix: .html
+    mode: HTML
+    cache: false
+
   mail:
-    host: localhost
-    port: 1025
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    properties:
+      mail.smtp.auth: false
+      mail.smtp.starttls.enable: false
 
 server:
   port: 8084
@@ -34,3 +57,8 @@ management:
   zipkin:
     tracing:
       endpoint: http://${ZIPKIN_HOST:localhost}:9411/api/v2/spans
+
+notification:
+  admin-email: admin@wallet.com
+  from-email: noreply@wallet.com
+  from-name: Wallet Notifications
