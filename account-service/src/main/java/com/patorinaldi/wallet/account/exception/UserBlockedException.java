@@ -2,6 +2,9 @@ package com.patorinaldi.wallet.account.exception;
 
 import java.util.UUID;
 
+import lombok.Getter;
+
+@Getter
 public class UserBlockedException extends RuntimeException {
     private final UUID userId;
     private final String reason;
