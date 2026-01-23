@@ -3,6 +3,7 @@ package com.patorinaldi.wallet.account.exception.handler;
 import com.patorinaldi.wallet.account.dto.ErrorResponse;
 import com.patorinaldi.wallet.account.exception.*;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -13,6 +14,7 @@ import java.time.LocalDateTime;
 import java.util.stream.Collectors;
 
 @ControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
 
     @ExceptionHandler({
@@ -22,8 +24,10 @@ public class GlobalExceptionHandler {
             UserAlreadyDeactivatedException.class
     })
     public ResponseEntity<ErrorResponse> handleConflict(
-            RuntimeException  ex,
+            RuntimeException ex,
             HttpServletRequest request) {
+
+        log.warn("Conflict error for {} {}: {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
 
         ErrorResponse response = new ErrorResponse(
                 LocalDateTime.now(),
@@ -41,8 +45,10 @@ public class GlobalExceptionHandler {
             WalletNotFoundException.class
     })
     public ResponseEntity<ErrorResponse> handleNotFound(
-            RuntimeException  ex,
+            RuntimeException ex,
             HttpServletRequest request) {
+
+        log.warn("Resource not found for {} {}: {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
 
         ErrorResponse response = new ErrorResponse(
                 LocalDateTime.now(),
@@ -66,6 +72,8 @@ public class GlobalExceptionHandler {
                 .map(error -> error.getField() + ": " + error.getDefaultMessage())
                 .collect(Collectors.joining(", "));
 
+        log.warn("Validation error for {} {}: {}", request.getMethod(), request.getRequestURI(), errorMessage);
+
         ErrorResponse response = new ErrorResponse(
                 LocalDateTime.now(),
                 400,
@@ -77,12 +85,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
-    @ExceptionHandler({
-            UserBlockedException.class
-    })
+    @ExceptionHandler(UserBlockedException.class)
     public ResponseEntity<ErrorResponse> handleForbidden(
-            RuntimeException  ex,
+            UserBlockedException ex,
             HttpServletRequest request) {
+
+        log.warn("Blocked user access attempt for {} {}: userId={}, reason={}",
+                request.getMethod(), request.getRequestURI(), ex.getUserId(), ex.getReason());
 
         ErrorResponse response = new ErrorResponse(
                 LocalDateTime.now(),
@@ -93,6 +102,24 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponse> handleUnexpected(
+            Exception ex,
+            HttpServletRequest request) {
+
+        log.error("Unexpected error for {} {}: {}", request.getMethod(), request.getRequestURI(), ex.getMessage(), ex);
+
+        ErrorResponse response = new ErrorResponse(
+                LocalDateTime.now(),
+                500,
+                "Internal Server Error",
+                "An unexpected error occurred",
+                request.getRequestURI()
+        );
+
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
     }
 }
 
