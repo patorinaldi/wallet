@@ -1,0 +1,57 @@
+{
+  "name": "Wallet Microservices",
+  "dockerComposeFile": ["../compose.yaml", "docker-compose.yml"],
+  "service": "devcontainer",
+  "workspaceFolder": "/workspace",
+  "shutdownAction": "stopCompose",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "vscjava.vscode-java-pack",
+        "vmware.vscode-spring-boot",
+        "vscjava.vscode-spring-initializr",
+        "vscjava.vscode-spring-boot-dashboard",
+        "vscjava.vscode-gradle",
+        "redhat.vscode-yaml",
+        "ms-azuretools.vscode-docker",
+        "eamodio.gitlens",
+        "SonarSource.sonarlint-vscode"
+      ],
+      "settings": {
+        "java.server.launchMode": "Standard",
+        "java.configuration.updateBuildConfiguration": "automatic",
+        "java.compile.nullAnalysis.mode": "automatic",
+        "editor.formatOnSave": true
+      }
+    }
+  },
+
+  "forwardPorts": [
+    8081,
+    8082,
+    8083,
+    8084,
+    8085,
+    5432,
+    9092,
+    6379,
+    8090,
+    9411
+  ],
+
+  "portsAttributes": {
+    "8081": { "label": "Account Service" },
+    "8082": { "label": "Transaction Service" },
+    "8083": { "label": "Ledger Service" },
+    "8084": { "label": "Notification Service" },
+    "8085": { "label": "Fraud Service" },
+    "5432": { "label": "PostgreSQL" },
+    "9092": { "label": "Kafka" },
+    "6379": { "label": "Redis" },
+    "8090": { "label": "Kafka UI" },
+    "9411": { "label": "Zipkin" }
+  },
+
+  "postCreateCommand": "./gradlew build -x test"
+}

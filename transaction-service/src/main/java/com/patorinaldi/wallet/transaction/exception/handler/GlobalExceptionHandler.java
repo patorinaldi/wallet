@@ -92,6 +92,26 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
     }
 
+    @ExceptionHandler(TransactionBlockedByFraudException.class)
+    public ResponseEntity<ErrorResponse> handleTransactionBlockedByFraud(
+            TransactionBlockedByFraudException ex,
+            HttpServletRequest request) {
+
+        log.warn("Transaction blocked by fraud detection for {} {}: walletId={}, riskScore={}, triggeredRules={}",
+                request.getMethod(), request.getRequestURI(),
+                ex.getWalletId(), ex.getRiskScore(), ex.getTriggeredRules());
+
+        ErrorResponse response = new ErrorResponse(
+                LocalDateTime.now(),
+                403,
+                "Forbidden",
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidationErrors(
             MethodArgumentNotValidException ex,

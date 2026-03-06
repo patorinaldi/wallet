@@ -57,13 +57,13 @@ public class WalletService {
 
         log.info("Wallet created successfully with ID: {}", wallet.getId());
 
-        WalletCreatedEvent event = new WalletCreatedEvent(
-                UUID.randomUUID(),
-                wallet.getId(),
-                wallet.getUser().getId(),
-                wallet.getCurrency(),
-                wallet.getCreatedAt()
-        );
+        WalletCreatedEvent event = WalletCreatedEvent.builder()
+                .eventId(UUID.randomUUID())
+                .walletId(wallet.getId())
+                .userId(wallet.getUser().getId())
+                .currency(wallet.getCurrency())
+                .createdAt(wallet.getCreatedAt())
+                .build();
         eventPublisher.publishEvent(event);
 
         return walletMapper.toResponse(wallet);

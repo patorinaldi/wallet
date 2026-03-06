@@ -81,13 +81,13 @@ public class TestDataBuilder {
     }
 
     public static WalletCreatedEvent createWalletCreatedEvent(UUID walletId, UUID userId, String currency) {
-        return new WalletCreatedEvent(
-                UUID.randomUUID(),
-                walletId,
-                userId,
-                currency,
-                Instant.now()
-        );
+        return WalletCreatedEvent.builder()
+                .eventId(UUID.randomUUID())
+                .walletId(walletId)
+                .userId(userId)
+                .currency(currency)
+                .createdAt(Instant.now())
+                .build();
     }
 
     public static Transaction createTransaction(TransactionType type, TransactionStatus status,

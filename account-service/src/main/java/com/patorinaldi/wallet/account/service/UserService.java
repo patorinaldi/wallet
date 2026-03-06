@@ -53,12 +53,13 @@ public class UserService {
 
         log.info("User created successfully with ID: {}", user.getId());
 
-        UserRegisteredEvent event = new UserRegisteredEvent(
-                UUID.randomUUID(),
-                user.getId(),
-                user.getEmail(),
-                user.getFullName(),
-                user.getCreatedAt());
+        UserRegisteredEvent event = UserRegisteredEvent.builder()
+                .recordId(UUID.randomUUID())
+                .userId(user.getId())
+                .email(user.getEmail())
+                .fullName(user.getFullName())
+                .registeredAt(user.getCreatedAt())
+                .build();
         eventPublisher.publishEvent(event);
 
         return userMapper.toResponse(user);

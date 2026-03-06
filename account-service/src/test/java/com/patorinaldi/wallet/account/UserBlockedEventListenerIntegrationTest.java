@@ -68,13 +68,13 @@ public class UserBlockedEventListenerIntegrationTest {
                 .build();
         userRepository.save(userToBlock);
 
-        UserBlockedEvent event = new UserBlockedEvent(
-                userToBlock.getId(),
-                UUID.randomUUID(),
-                "High risk score",
-                90,
-                Instant.now()
-        );
+        UserBlockedEvent event = UserBlockedEvent.builder()
+                .userId(userToBlock.getId())
+                .triggeredByTransactionId(UUID.randomUUID())
+                .reason("High risk score")
+                .riskScore(90)
+                .blockedAt(Instant.now())
+                .build();
 
         // When
         kafkaTemplate.send("user-blocked", event.userId().toString(), event);
@@ -102,13 +102,13 @@ public class UserBlockedEventListenerIntegrationTest {
                 .build();
         userRepository.save(userToBlock);
 
-        UserBlockedEvent event = new UserBlockedEvent(
-                userToBlock.getId(),
-                UUID.randomUUID(),
-                "Idempotency test",
-                85,
-                Instant.now()
-        );
+        UserBlockedEvent event = UserBlockedEvent.builder()
+                .userId(userToBlock.getId())
+                .triggeredByTransactionId(UUID.randomUUID())
+                .reason("Idempotency test")
+                .riskScore(85)
+                .blockedAt(Instant.now())
+                .build();
 
         // When
         kafkaTemplate.send("user-blocked", event.userId().toString(), event);

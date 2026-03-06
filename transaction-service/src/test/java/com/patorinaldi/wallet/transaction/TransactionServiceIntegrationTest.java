@@ -835,13 +835,13 @@ public class TransactionServiceIntegrationTest {
     @Test
     void shouldAddUserToBlockedListWhenEventIsConsumed() {
         // Given
-        UserBlockedEvent event = new UserBlockedEvent(
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                "High risk score",
-                95,
-                Instant.now()
-        );
+        UserBlockedEvent event = UserBlockedEvent.builder()
+                .userId(UUID.randomUUID())
+                .triggeredByTransactionId(UUID.randomUUID())
+                .reason("High risk score")
+                .riskScore(95)
+                .blockedAt(Instant.now())
+                .build();
 
         // When
         kafkaTemplate.send("user-blocked", event.userId().toString(), event);
@@ -856,13 +856,13 @@ public class TransactionServiceIntegrationTest {
     void shouldRejectTransactionForUserBlockedViaEvent() {
         // Given
         WalletBalance wallet = setupWalletWithBalance(new BigDecimal("1000.00"));
-        UserBlockedEvent event = new UserBlockedEvent(
-                wallet.getUserId(),
-                UUID.randomUUID(),
-                "End-to-end block test",
-                100,
-                Instant.now()
-        );
+        UserBlockedEvent event = UserBlockedEvent.builder()
+                .userId(wallet.getUserId())
+                .triggeredByTransactionId(UUID.randomUUID())
+                .reason("End-to-end block test")
+                .riskScore(100)
+                .blockedAt(Instant.now())
+                .build();
 
         // When - block user via Kafka event
         kafkaTemplate.send("user-blocked", event.userId().toString(), event);

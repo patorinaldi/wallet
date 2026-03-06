@@ -28,13 +28,13 @@ public class UserBlockedEventListenerTest {
     @Test
     void handleUserBlocked_shouldCallUserService_whenEventIsReceived() {
         // Given
-        UserBlockedEvent event = new UserBlockedEvent(
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                "Automated fraud detection",
-                90,
-                Instant.now()
-        );
+        UserBlockedEvent event = UserBlockedEvent.builder()
+                .userId(UUID.randomUUID())
+                .triggeredByTransactionId(UUID.randomUUID())
+                .reason("Automated fraud detection")
+                .riskScore(90)
+                .blockedAt(Instant.now())
+                .build();
 
         // When
         listener.handleUserBlocked(event);
@@ -54,13 +54,13 @@ public class UserBlockedEventListenerTest {
     @Test
     void handleUserBlocked_shouldThrowException_whenUserNotFound() {
         // Given
-        UserBlockedEvent event = new UserBlockedEvent(
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                "Reason",
-                100,
-                Instant.now()
-        );
+        UserBlockedEvent event = UserBlockedEvent.builder()
+                .userId(UUID.randomUUID())
+                .triggeredByTransactionId(UUID.randomUUID())
+                .reason("Reason")
+                .riskScore(100)
+                .blockedAt(Instant.now())
+                .build();
         doThrow(new UserNotFoundException(event.userId()))
                 .when(userService)
                 .blockUser(

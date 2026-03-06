@@ -1,0 +1,24 @@
+services:
+  devcontainer:
+    build:
+      context: .devcontainer
+      dockerfile: Dockerfile
+    user: root
+    volumes:
+      - ..:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: sleep infinity
+    environment:
+      DB_HOST: postgres
+      DB_USERNAME: wallet
+      DB_PASSWORD: wallet123
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      ZIPKIN_HOST: zipkin
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy

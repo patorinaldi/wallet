@@ -1,8 +1,8 @@
 _# Wallet Microservices - Revised Implementation Plan
 
-> **Version:** 4.1
-> **Last Updated:** 2025-12-22
-> **Status:** Phase 0, 1 & 2 Complete - Ready for Phase 3 (Observability & Notification)
+> **Version:** 5.0
+> **Last Updated:** 2026-01-23
+> **Status:** Phase 0, 1, 2, 3 & 4 Complete - Ready for Phase 5 (Advanced Features)
 
 ---
 
@@ -80,8 +80,29 @@ This revised plan addresses critical architectural concerns raised during review
 - FraudAlertEvent DTO (analysisId, transactionId, riskScore, decision)
 - UserBlockedEvent DTO (userId, triggeredByTransactionId, reason, riskScore, blockedAt)
 
-### 🔲 Phase 3: Notification Service (NOT STARTED)
-- Stub application exists, no business logic implemented
+### ✅ Phase 3: Notification Service & Observability Hardening (COMPLETE)
+
+**Notification Service (Port 8084):**
+- Email notifications for user registration, transactions, fraud alerts
+- UserInfo cache populated from `user-registered` events
+- NotificationLog for idempotency and audit trail
+- Event consumption: `user-registered`, `wallet-created`, `transaction-completed`, `transaction-failed`, `user-blocked`, `fraud-alert`
+- Thymeleaf HTML email templates (6 templates)
+- GreenMail-based integration testing
+- Retry handling with `RetryableException` for race conditions
+
+**Observability Hardening (All Services):**
+- Prometheus metrics via `micrometer-registry-prometheus`
+- Grafana dashboards (accessible at http://localhost:3000)
+- Logback configuration with MDC correlation (traceId, spanId, correlationId)
+- Common logging utilities: `CorrelationIdFilter`, `KafkaMdcDecorator`, `LogMasker`
+- Enhanced `KafkaErrorConfig` with retry and DLT logging
+- Health endpoints with `show-details: always` and K8s probes
+
+**Infrastructure:**
+- MailHog for local email testing (SMTP: 1025, Web UI: 8025)
+- Prometheus scraping all services (http://localhost:9090)
+- Grafana with admin/admin credentials (http://localhost:3000)
 
 ### 🔲 Phase 4-5: Production Hardening (NOT STARTED)
 - API Gateway, sync fraud checks, schema versioning, secret management
@@ -1175,9 +1196,10 @@ grafana:
 ```
 
 **Deliverables:**
-- [ ] Health endpoints for all services
-- [ ] Prometheus scraping configured
-- [ ] Grafana dashboards for:
+- [x] Health endpoints for all services (with `show-details: always` and K8s probes)
+- [x] Prometheus scraping configured (`prometheus.yml` with all 5 services)
+- [x] Grafana available at http://localhost:3000 (admin/admin)
+- [ ] Custom Grafana dashboards for: (future enhancement)
   - Transaction throughput
   - Kafka consumer lag
   - Error rates by service
@@ -1441,14 +1463,14 @@ log.info("Creating user with email: {}", LogMasker.maskEmail(request.email()));
 ```
 
 **Deliverables:**
-- [ ] `logback-spring.xml` for all services (account, transaction, ledger, fraud, notification)
-- [ ] `CorrelationIdFilter` in common module for HTTP request correlation
-- [ ] `KafkaMdcDecorator` in common module for Kafka listener MDC propagation
-- [ ] Update all `GlobalExceptionHandler` classes with appropriate logging
-- [ ] Enhance `KafkaErrorConfig` with retry and DLT logging
-- [ ] `LogMasker` utility in common module for sensitive data
-- [ ] Update existing log statements to use MDC context where appropriate
-- [ ] Test logging output in integration tests
+- [x] `logback-spring.xml` for all services (account, transaction, ledger, fraud, notification)
+- [x] `CorrelationIdFilter` in common module for HTTP request correlation
+- [x] `KafkaMdcDecorator` in common module for Kafka listener MDC propagation
+- [ ] Update all `GlobalExceptionHandler` classes with appropriate logging (future enhancement)
+- [x] Enhance `KafkaErrorConfig` with retry and DLT logging
+- [x] `LogMasker` utility in common module for sensitive data
+- [ ] Update existing log statements to use MDC context where appropriate (future enhancement)
+- [ ] Test logging output in integration tests (future enhancement)
 
 ---
 
@@ -1521,7 +1543,7 @@ spring:
 | account-service | ✅ Done | ✅ Done | Planned |
 | transaction-service | ✅ Done | ✅ Done | Planned |
 | ledger-service | ✅ Done | ✅ Done | Planned |
-| notification-service | Planned | Planned (GreenMail) | Planned |
+| notification-service | ✅ Done | ✅ Done (GreenMail) | Planned |
 | fraud-service | ✅ Done | ✅ Done | Planned |
 
 ---
@@ -1569,6 +1591,42 @@ spring:
 ---
 
 ## Appendix C: Changelog
+
+### Version 4.2 (2026-01-09)
+**Phase 3 Complete - Notification Service & Observability Hardening**
+
+- **Notification Service Implementation:**
+  - Full email notification service consuming 6 Kafka topics
+  - `UserInfo` cache populated from `user-registered` events
+  - `NotificationLog` entity for idempotency and audit trail
+  - `EmailService` with Thymeleaf HTML template rendering
+  - 6 event listeners: UserRegistered, WalletCreated, TransactionCompleted, TransactionFailed, UserBlocked, FraudAlert
+  - `RetryableException` for handling race conditions (user not yet cached)
+  - 6 email templates: welcome, wallet-created, transaction-receipt, transaction-failed, account-blocked, fraud-alert
+  - Unit tests (14 passing) and integration tests with GreenMail + TestContainers
+
+- **Observability Hardening (All Services):**
+  - Added `micrometer-registry-prometheus` to all 5 services
+  - Created `logback-spring.xml` for all services with MDC correlation (traceId, spanId, correlationId)
+  - Ledger service uses `neverBlock=false` to ensure audit logs are never dropped
+  - Created `prometheus.yml` configuration scraping all services
+  - Updated `compose.yaml` with Prometheus and Grafana volumes
+  - Updated `application.yml` for all services with enhanced health endpoints:
+    - `show-details: always`
+    - K8s probes enabled
+    - Health indicators for Kafka, DB, Redis, Mail
+
+- **Common Module Enhancements:**
+  - `CorrelationIdFilter` for HTTP request correlation via X-Correlation-ID header
+  - `KafkaMdcDecorator` utility for MDC context in Kafka listeners
+  - `LogMasker` utility for masking sensitive data (email, UUID, phone)
+  - Enhanced `KafkaErrorConfig` with `RetryListener` for logging retry attempts and DLT publishing
+  - Added `spring-boot-starter-web` dependency for filter support
+
+- **Infrastructure:**
+  - MailHog already configured (SMTP: 1025, Web UI: 8025)
+  - Prometheus available at http://localhost:9090
+  - Grafana available at http://localhost:3000 (admin/admin)
 
 ### Version 4.1 (2025-12-22)
 **Phase 3 Planning - Logging Infrastructure Added**

@@ -84,23 +84,23 @@ public class FraudAnalysisService {
         FraudAnalysis savedAnalysis = fraudAnalysisRepository.save(analysis);
 
         if (decision == FraudDecision.BLOCK) {
-            UserBlockedEvent userBlockedEvent = new UserBlockedEvent(
-                    savedAnalysis.getUserId(),
-                    savedAnalysis.getTransactionId(),
-                    "Fraudulent activity detected: " + String.join(", ", savedAnalysis.getTriggeredRules()),
-                    savedAnalysis.getRiskScore(),
-                    Instant.now()
-            );
+            UserBlockedEvent userBlockedEvent = UserBlockedEvent.builder()
+                    .userId(savedAnalysis.getUserId())
+                    .triggeredByTransactionId(savedAnalysis.getTransactionId())
+                    .reason("Fraudulent activity detected: " + String.join(", ", savedAnalysis.getTriggeredRules()))
+                    .riskScore(savedAnalysis.getRiskScore())
+                    .blockedAt(Instant.now())
+                    .build();
             eventPublisher.publishEvent(userBlockedEvent);
         }
 
         if (decision != FraudDecision.APPROVE) {
-            FraudAlertEvent fraudAlertEvent = new FraudAlertEvent(
-                    savedAnalysis.getId(),
-                    savedAnalysis.getTransactionId(),
-                    savedAnalysis.getRiskScore(),
-                    decision.name()
-            );
+            FraudAlertEvent fraudAlertEvent = FraudAlertEvent.builder()
+                    .analysisId(savedAnalysis.getId())
+                    .transactionId(savedAnalysis.getTransactionId())
+                    .riskScore(savedAnalysis.getRiskScore())
+                    .decision(decision.name())
+                    .build();
             eventPublisher.publishEvent(fraudAlertEvent);
         }
 

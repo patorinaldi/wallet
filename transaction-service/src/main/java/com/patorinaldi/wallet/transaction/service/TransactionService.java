@@ -10,6 +10,9 @@ import com.patorinaldi.wallet.transaction.entity.WalletBalance;
 import com.patorinaldi.wallet.transaction.exception.*;
 import com.patorinaldi.wallet.transaction.mapper.BalanceMapper;
 import com.patorinaldi.wallet.transaction.mapper.TransactionMapper;
+import com.patorinaldi.wallet.transaction.client.FraudCheckRequest;
+import com.patorinaldi.wallet.transaction.client.FraudCheckResponse;
+import com.patorinaldi.wallet.transaction.client.FraudClient;
 import com.patorinaldi.wallet.transaction.repository.BlockedUserRepository;
 import com.patorinaldi.wallet.transaction.repository.TransactionRepository;
 import com.patorinaldi.wallet.transaction.repository.WalletBalanceRepository;
@@ -21,6 +24,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -36,6 +40,7 @@ public class TransactionService {
     private final BalanceMapper balanceMapper;
     private final ApplicationEventPublisher eventPublisher;
     private final BlockedUserRepository blockedUserRepository;
+    private final FraudClient fraudClient;
 
     @Transactional
     public TransactionResponse deposit(DepositRequest request) {
@@ -55,6 +60,9 @@ public class TransactionService {
                 });
 
         validateUserNotBlocked(walletBalance.getUserId());
+
+        performFraudCheck(walletBalance.getWalletId(), walletBalance.getUserId(),
+                request.amount(), TransactionType.DEPOSIT, walletBalance.getCurrency());
 
         Transaction transaction = Transaction.builder()
                 .amount(request.amount())
@@ -100,6 +108,9 @@ public class TransactionService {
                 });
 
         validateUserNotBlocked(walletBalance.getUserId());
+
+        performFraudCheck(walletBalance.getWalletId(), walletBalance.getUserId(),
+                request.amount(), TransactionType.WITHDRAWAL, walletBalance.getCurrency());
 
         Transaction transaction = Transaction.builder()
                 .amount(request.amount())
@@ -161,6 +172,9 @@ public class TransactionService {
 
         validateUserNotBlocked(sourceWalletBalance.getUserId());
         validateUserNotBlocked(destinationWalletBalance.getUserId());
+
+        performFraudCheck(sourceWalletBalance.getWalletId(), sourceWalletBalance.getUserId(),
+                request.amount(), TransactionType.TRANSFER_OUT, sourceWalletBalance.getCurrency());
 
         Transaction transactionOut = Transaction.builder()
                 .amount(request.amount())
@@ -292,6 +306,29 @@ public class TransactionService {
             log.warn("Transaction rejected - user {} is blocked: {}", userId, blocked.getReason());
             throw new UserBlockedException(userId, blocked.getReason());
         });
+    }
+
+    private void performFraudCheck(UUID walletId, UUID userId, BigDecimal amount,
+                                   TransactionType type, String currency) {
+        log.debug("Performing sync fraud check for wallet: {}, amount: {}, type: {}",
+                walletId, amount, type);
+
+        FraudCheckRequest fraudRequest = new FraudCheckRequest(
+                walletId, userId, amount, type, currency
+        );
+
+        FraudCheckResponse response = fraudClient.checkTransaction(fraudRequest);
+
+        if (response.isBlocked()) {
+            log.warn("Transaction blocked by fraud detection for wallet: {}. Risk score: {}, Rules: {}",
+                    walletId, response.riskScore(), response.triggeredRules());
+            throw new TransactionBlockedByFraudException(walletId, response.riskScore(), response.triggeredRules());
+        }
+
+        if (response.isFlagged()) {
+            log.warn("Transaction flagged for wallet: {}. Risk score: {}, Rules: {}. Proceeding with transaction.",
+                    walletId, response.riskScore(), response.triggeredRules());
+        }
     }
 
 }

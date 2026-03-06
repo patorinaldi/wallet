@@ -8,8 +8,11 @@ import com.patorinaldi.wallet.transaction.dto.*;
 import com.patorinaldi.wallet.transaction.entity.Transaction;
 import com.patorinaldi.wallet.transaction.entity.WalletBalance;
 import com.patorinaldi.wallet.transaction.entity.BlockedUser;
+import com.patorinaldi.wallet.transaction.client.FraudCheckResponse;
+import com.patorinaldi.wallet.transaction.client.FraudClient;
 import com.patorinaldi.wallet.transaction.exception.DuplicateTransactionException;
 import com.patorinaldi.wallet.transaction.exception.InsufficientBalanceException;
+import com.patorinaldi.wallet.transaction.exception.TransactionBlockedByFraudException;
 import com.patorinaldi.wallet.transaction.exception.TransactionNotFoundException;
 import com.patorinaldi.wallet.transaction.exception.UserBlockedException;
 import com.patorinaldi.wallet.transaction.exception.WalletBalanceNotFoundException;
@@ -31,6 +34,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -64,6 +68,9 @@ class TransactionServiceTest {
     @Mock
     private BlockedUserRepository blockedUserRepository;
 
+    @Mock
+    private FraudClient fraudClient;
+
     @InjectMocks
     private TransactionService transactionService;
 
@@ -82,6 +89,7 @@ class TransactionServiceTest {
 
         when(transactionRepository.existsByIdempotencyKey(request.idempotencyKey())).thenReturn(false);
         when(walletBalanceRepository.findByWalletId(walletId)).thenReturn(Optional.of(walletBalance));
+        when(fraudClient.checkTransaction(any())).thenReturn(createApprovedFraudResponse());
         when(transactionRepository.save(any(Transaction.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(walletBalanceRepository.save(any(WalletBalance.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(transactionMapper.toResponse(any(Transaction.class))).thenReturn(mock(TransactionResponse.class));
@@ -149,6 +157,7 @@ class TransactionServiceTest {
 
         when(transactionRepository.existsByIdempotencyKey(request.idempotencyKey())).thenReturn(false);
         when(walletBalanceRepository.findByWalletId(walletId)).thenReturn(Optional.of(walletBalance));
+        when(fraudClient.checkTransaction(any())).thenReturn(createApprovedFraudResponse());
         when(transactionRepository.save(any(Transaction.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(walletBalanceRepository.save(any(WalletBalance.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(transactionMapper.toResponse(any(Transaction.class))).thenReturn(mock(TransactionResponse.class));
@@ -180,6 +189,7 @@ class TransactionServiceTest {
 
         when(transactionRepository.existsByIdempotencyKey(request.idempotencyKey())).thenReturn(false);
         when(walletBalanceRepository.findByWalletId(walletId)).thenReturn(Optional.of(walletBalance));
+        when(fraudClient.checkTransaction(any())).thenReturn(createApprovedFraudResponse());
 
         // When & Then
         assertThrows(InsufficientBalanceException.class, () -> transactionService.withdrawal(request));
@@ -246,6 +256,7 @@ class TransactionServiceTest {
         when(transactionRepository.existsByIdempotencyKey(request.idempotencyKey() + ":in")).thenReturn(false);
         when(walletBalanceRepository.findByWalletId(sourceWalletId)).thenReturn(Optional.of(sourceWallet));
         when(walletBalanceRepository.findByWalletId(destWalletId)).thenReturn(Optional.of(destWallet));
+        when(fraudClient.checkTransaction(any())).thenReturn(createApprovedFraudResponse());
         when(transactionRepository.save(any(Transaction.class))).thenAnswer(invocation -> {
             Transaction tx = invocation.getArgument(0);
             if (tx.getId() == null) {
@@ -290,6 +301,7 @@ class TransactionServiceTest {
         when(transactionRepository.existsByIdempotencyKey(anyString())).thenReturn(false);
         when(walletBalanceRepository.findByWalletId(sourceWalletId)).thenReturn(Optional.of(sourceWallet));
         when(walletBalanceRepository.findByWalletId(destWalletId)).thenReturn(Optional.of(destWallet));
+        when(fraudClient.checkTransaction(any())).thenReturn(createApprovedFraudResponse());
 
         // When & Then
         assertThrows(InsufficientBalanceException.class, () -> transactionService.transfer(request));
@@ -585,5 +597,125 @@ class TransactionServiceTest {
         verify(transactionRepository, never()).save(any());
         verify(walletBalanceRepository, never()).save(any());
         verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    // ========== FRAUD DETECTION TESTS ==========
+
+    @Test
+    void deposit_shouldThrowTransactionBlockedByFraudException_whenFraudServiceBlocksTransaction() {
+        // Given
+        UUID walletId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        BigDecimal initialBalance = new BigDecimal("100.00");
+        BigDecimal depositAmount = new BigDecimal("60000.00"); // High amount to trigger fraud
+
+        WalletBalance walletBalance = TestDataBuilder.createWalletBalance(walletId, userId, initialBalance, "USD");
+        DepositRequest request = TestDataBuilder.createDepositRequest(walletId, depositAmount, "Large deposit");
+
+        when(transactionRepository.existsByIdempotencyKey(request.idempotencyKey())).thenReturn(false);
+        when(walletBalanceRepository.findByWalletId(walletId)).thenReturn(Optional.of(walletBalance));
+        when(fraudClient.checkTransaction(any())).thenReturn(createBlockedFraudResponse());
+
+        // When & Then
+        TransactionBlockedByFraudException ex = assertThrows(TransactionBlockedByFraudException.class,
+                () -> transactionService.deposit(request));
+
+        assertTrue(ex.getMessage().contains("blocked by fraud"));
+        assertEquals(walletId, ex.getWalletId());
+        verify(transactionRepository, never()).save(any());
+        verify(walletBalanceRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void withdrawal_shouldThrowTransactionBlockedByFraudException_whenFraudServiceBlocksTransaction() {
+        // Given
+        UUID walletId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        BigDecimal initialBalance = new BigDecimal("100000.00");
+        BigDecimal withdrawalAmount = new BigDecimal("60000.00");
+
+        WalletBalance walletBalance = TestDataBuilder.createWalletBalance(walletId, userId, initialBalance, "USD");
+        WithdrawalRequest request = TestDataBuilder.createWithdrawalRequest(walletId, withdrawalAmount, "Large withdrawal");
+
+        when(transactionRepository.existsByIdempotencyKey(request.idempotencyKey())).thenReturn(false);
+        when(walletBalanceRepository.findByWalletId(walletId)).thenReturn(Optional.of(walletBalance));
+        when(fraudClient.checkTransaction(any())).thenReturn(createBlockedFraudResponse());
+
+        // When & Then
+        TransactionBlockedByFraudException ex = assertThrows(TransactionBlockedByFraudException.class,
+                () -> transactionService.withdrawal(request));
+
+        assertTrue(ex.getMessage().contains("blocked by fraud"));
+        verify(transactionRepository, never()).save(any());
+    }
+
+    @Test
+    void transfer_shouldThrowTransactionBlockedByFraudException_whenFraudServiceBlocksTransaction() {
+        // Given
+        UUID sourceWalletId = UUID.randomUUID();
+        UUID destWalletId = UUID.randomUUID();
+        UUID sourceUserId = UUID.randomUUID();
+        UUID destUserId = UUID.randomUUID();
+        BigDecimal sourceBalance = new BigDecimal("100000.00");
+        BigDecimal destBalance = new BigDecimal("50.00");
+        BigDecimal transferAmount = new BigDecimal("60000.00");
+
+        WalletBalance sourceWallet = TestDataBuilder.createWalletBalance(sourceWalletId, sourceUserId, sourceBalance, "USD");
+        WalletBalance destWallet = TestDataBuilder.createWalletBalance(destWalletId, destUserId, destBalance, "USD");
+        TransferRequest request = TestDataBuilder.createTransferRequest(sourceWalletId, destWalletId, transferAmount, "Large transfer");
+
+        when(transactionRepository.existsByIdempotencyKey(anyString())).thenReturn(false);
+        when(walletBalanceRepository.findByWalletId(sourceWalletId)).thenReturn(Optional.of(sourceWallet));
+        when(walletBalanceRepository.findByWalletId(destWalletId)).thenReturn(Optional.of(destWallet));
+        when(fraudClient.checkTransaction(any())).thenReturn(createBlockedFraudResponse());
+
+        // When & Then
+        TransactionBlockedByFraudException ex = assertThrows(TransactionBlockedByFraudException.class,
+                () -> transactionService.transfer(request));
+
+        assertTrue(ex.getMessage().contains("blocked by fraud"));
+        verify(transactionRepository, never()).save(any());
+    }
+
+    @Test
+    void deposit_shouldProceed_whenFraudServiceFlagsTransaction() {
+        // Given
+        UUID walletId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        BigDecimal initialBalance = new BigDecimal("100.00");
+        BigDecimal depositAmount = new BigDecimal("15000.00");
+
+        WalletBalance walletBalance = TestDataBuilder.createWalletBalance(walletId, userId, initialBalance, "USD");
+        DepositRequest request = TestDataBuilder.createDepositRequest(walletId, depositAmount, "Flagged deposit");
+
+        when(transactionRepository.existsByIdempotencyKey(request.idempotencyKey())).thenReturn(false);
+        when(walletBalanceRepository.findByWalletId(walletId)).thenReturn(Optional.of(walletBalance));
+        when(fraudClient.checkTransaction(any())).thenReturn(createFlaggedFraudResponse());
+        when(transactionRepository.save(any(Transaction.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(walletBalanceRepository.save(any(WalletBalance.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(transactionMapper.toResponse(any(Transaction.class))).thenReturn(mock(TransactionResponse.class));
+
+        // When
+        TransactionResponse response = transactionService.deposit(request);
+
+        // Then - Transaction should proceed even if flagged
+        assertNotNull(response);
+        verify(transactionRepository).save(any(Transaction.class));
+        verify(eventPublisher).publishEvent(any(TransactionCompletedEvent.class));
+    }
+
+    // ========== HELPER METHODS ==========
+
+    private FraudCheckResponse createApprovedFraudResponse() {
+        return new FraudCheckResponse(0, "APPROVE", Collections.emptyList(), "Transaction approved");
+    }
+
+    private FraudCheckResponse createFlaggedFraudResponse() {
+        return new FraudCheckResponse(55, "FLAG", List.of("LARGE_AMOUNT"), "Transaction flagged for review");
+    }
+
+    private FraudCheckResponse createBlockedFraudResponse() {
+        return new FraudCheckResponse(85, "BLOCK", List.of("VERY_LARGE_AMOUNT", "HIGH_VELOCITY"), "Transaction blocked due to high risk");
     }
 }

@@ -1,0 +1,27 @@
+# Bootstrap configuration for Vault integration
+# This file is loaded before application.yml when Spring Cloud is present
+
+spring:
+  application:
+    name: transaction-service
+
+  cloud:
+    vault:
+      enabled: ${VAULT_ENABLED:false}
+      host: ${VAULT_HOST:localhost}
+      port: ${VAULT_PORT:8200}
+      scheme: ${VAULT_SCHEME:http}
+      connection-timeout: 5000
+      read-timeout: 15000
+      authentication: ${VAULT_AUTH_METHOD:TOKEN}
+      token: ${VAULT_TOKEN:dev-root-token}
+      kv:
+        enabled: true
+        backend: secret
+        default-context: wallet
+        application-name: wallet
+
+# Vault disabled by default for local development
+# Enable with: VAULT_ENABLED=true
+vault:
+  enabled: ${VAULT_ENABLED:false}

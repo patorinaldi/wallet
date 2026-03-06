@@ -34,13 +34,13 @@ class UserBlockedEventListenerTest {
         Integer riskScore = 85;
         Instant blockedAt = Instant.now();
 
-        UserBlockedEvent event = new UserBlockedEvent(
-                userId,
-                transactionId,
-                reason,
-                riskScore,
-                blockedAt
-        );
+        UserBlockedEvent event = UserBlockedEvent.builder()
+                .userId(userId)
+                .triggeredByTransactionId(transactionId)
+                .reason(reason)
+                .riskScore(riskScore)
+                .blockedAt(blockedAt)
+                .build();
 
         when(blockedUserRepository.existsByTriggeredByTransactionId(transactionId))
                 .thenReturn(false);
@@ -65,13 +65,13 @@ class UserBlockedEventListenerTest {
         UUID userId = UUID.randomUUID();
         UUID transactionId = UUID.randomUUID();
 
-        UserBlockedEvent event = new UserBlockedEvent(
-                userId,
-                transactionId,
-                "Fraud detected",
-                85,
-                Instant.now()
-        );
+        UserBlockedEvent event = UserBlockedEvent.builder()
+                .userId(userId)
+                .triggeredByTransactionId(transactionId)
+                .reason("Fraud detected")
+                .riskScore(85)
+                .blockedAt(Instant.now())
+                .build();
 
         when(blockedUserRepository.existsByTriggeredByTransactionId(transactionId))
                 .thenReturn(true);
